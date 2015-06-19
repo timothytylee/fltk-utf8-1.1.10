@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <FL/fl_utf8.H>
 #include "flstring.h"
 #include <sys/stat.h>
 
@@ -589,46 +590,14 @@ Fl_Preferences::Name::~Name()
 
 int Fl_Preferences::Node::lastEntrySet = -1;
 
-// recursively create a path in the file system
-static char makePath( const char *path ) {
-  if (access(path, 0)) {
-    const char *s = strrchr( path, '/' );
-    if ( !s ) return 0;
-    int len = s-path;
-    char *p = (char*)malloc( len+1 );
-    memcpy( p, path, len );
-    p[len] = 0;
-    makePath( p );
-    free( p );
-#if defined(WIN32) && !defined(__CYGWIN__)
-    return ( mkdir( path ) == 0 );
-#else
-    return ( mkdir( path, 0777 ) == 0 );
-#endif // WIN32 && !__CYGWIN__
-  }
-  return 1;
-}
-
-// strip the filename and create a path
-static void makePathForFile( const char *path )
-{
-  const char *s = strrchr( path, '/' );
-  if ( !s ) return;
-  int len = s-path;
-  char *p = (char*)malloc( len+1 );
-  memcpy( p, path, len );
-  p[len] = 0;
-  makePath( p );
-  free( p );
-}
-
 // create the root node
 // - construct the name of the file that will hold our preferences
 Fl_Preferences::RootNode::RootNode( Fl_Preferences *prefs, Root root, const char *vendor, const char *application )
 {
-  char filename[ FL_PATH_MAX ]; filename[0] = 0;
+  char filename[ FL_PATH_MAX * 5]; filename[0] = 0;
 #ifdef WIN32
 #  define FLPREFS_RESOURCE	"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders"
+#  define FLPREFS_RESOURCEW	L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders"
   int appDataLen = strlen(vendor) + strlen(application) + 8;
   DWORD type, nn;
   LONG err;
@@ -636,32 +605,64 @@ Fl_Preferences::RootNode::RootNode( Fl_Preferences *prefs, Root root, const char
 
   switch (root) {
     case SYSTEM:
-      err = RegOpenKey( HKEY_LOCAL_MACHINE, FLPREFS_RESOURCE, &key );
+      if (fl_is_nt4()) {
+	err = RegOpenKeyW( HKEY_LOCAL_MACHINE, FLPREFS_RESOURCEW, &key );
+      } else {
+	err = RegOpenKeyA( HKEY_LOCAL_MACHINE, FLPREFS_RESOURCE, &key );
+      }
       if (err == ERROR_SUCCESS) {
 	nn = FL_PATH_MAX - appDataLen;
-	err = RegQueryValueEx( key, "Common AppData", 0L, &type, (BYTE*)filename, &nn );
+	if (fl_is_nt4()) {
+	  err = RegQueryValueExW( key, L"Common AppData", 0L, &type, (BYTE*)filename, &nn );
+	} else {
+	  err = RegQueryValueExA( key, "Common AppData", 0L, &type, (BYTE*)filename, &nn );
+	}
 	if ( ( err != ERROR_SUCCESS ) && ( type == REG_SZ ) )
+	{
 	  filename[0] = 0;
+          if (fl_is_nt4()) filename[1] = 0;
+	}
         RegCloseKey(key);
       }
       break;
     case USER:
-      err = RegOpenKey( HKEY_CURRENT_USER, FLPREFS_RESOURCE, &key );
+      if (fl_is_nt4()) {
+	err = RegOpenKeyW( HKEY_CURRENT_USER, FLPREFS_RESOURCEW, &key );
+      } else {
+	err = RegOpenKeyA( HKEY_CURRENT_USER, FLPREFS_RESOURCE, &key );
+      }
       if (err == ERROR_SUCCESS) {
 	nn = FL_PATH_MAX - appDataLen;
-	err = RegQueryValueEx( key, "AppData", 0L, &type, (BYTE*)filename, &nn );
+	if (fl_is_nt4()) {
+	  err = RegQueryValueExW( key, L"AppData", 0L, &type, (BYTE*)filename, &nn );
+	} else {
+	  err = RegQueryValueExA( key, "AppData", 0L, &type, (BYTE*)filename, &nn );
+	}
 	if ( ( err != ERROR_SUCCESS ) && ( type == REG_SZ ) )
 	{
-	  err = RegQueryValueEx( key, "Personal", 0L, &type, (BYTE*)filename, &nn );
+	  if (fl_is_nt4()) {
+	    err = RegQueryValueExW( key, L"Personal", 0L, &type, (BYTE*)filename, &nn );
+	  } else {
+	    err = RegQueryValueExA( key, "Personal", 0L, &type, (BYTE*)filename, &nn );
+	  }
 	  if ( ( err != ERROR_SUCCESS ) && ( type == REG_SZ ) )
 	    filename[0] = 0;
+            if (fl_is_nt4()) filename[1] = 0;
 	}
         RegCloseKey(key);
       }
       break;
   }
 
-  if (!filename[0]) {
+  if (fl_is_nt4()) {
+    if (!filename[1] && !filename[0]) {
+      strcpy(filename, "C:\\FLTK");
+    } else {
+      xchar*b = (xchar*)_wcsdup((xchar*)filename);
+      filename[fl_unicode2utf(b, wcslen((xchar*)b), filename)] = 0;
+      free(b);
+    }
+  } else if (!filename[0]) {
     strcpy(filename, "C:\\FLTK");
   }
 
@@ -690,7 +691,7 @@ Fl_Preferences::RootNode::RootNode( Fl_Preferences *prefs, Root root, const char
   const char *e;
   switch (root) {
     case USER:
-      if ((e = getenv("HOME")) != NULL) {
+      if ((e = fl_getenv("HOME")) != NULL) {
 	strlcpy(filename, e, sizeof(filename));
 
 	if (filename[strlen(filename)-1] != '/') {
@@ -764,7 +765,7 @@ Fl_Preferences::RootNode::~RootNode()
 int Fl_Preferences::RootNode::read()
 {
   char buf[1024];
-  FILE *f = fopen( filename_, "rb" );
+  FILE *f = fl_fopen( filename_, "rb" );
   if ( !f ) return 0;
   fgets( buf, 1024, f );
   fgets( buf, 1024, f );
@@ -805,8 +806,8 @@ int Fl_Preferences::RootNode::read()
 // write the group tree and all entry leafs
 int Fl_Preferences::RootNode::write()
 {
-  makePathForFile(filename_);
-  FILE *f = fopen( filename_, "wb" );
+  fl_make_path_for_file(filename_);
+  FILE *f = fl_fopen( filename_, "wb" );
   if ( !f ) return 1;
   fprintf( f, "; FLTK preferences file format 1.0\n" );
   fprintf( f, "; vendor: %s\n", vendor_ );
@@ -826,7 +827,7 @@ char Fl_Preferences::RootNode::getPath( char *path, int pathlen )
   s = strrchr( path, '.' );
   if ( !s ) return 0;
   *s = 0;
-  char ret = makePath( path );
+  char ret = fl_make_path( path );
   strcpy( s, "/" );
   return ret;
 }

@@ -88,11 +88,47 @@ Fl_Fontdesc* fl_fonts = built_in_table;
 
 #define current_font (fl_fontsize->font)
 
+static const char* enc_strings[] =
+{
+  "iso8859-1",		"fr",
+  "iso8859-2",		"pl",
+  "iso8859-3",		"eo",
+  "iso8859-4",		"lt",
+  "iso8859-5",		"bg",
+  "iso8859-6",		"",
+  "iso8859-7",		"gr",
+  "iso8859-8",		"he",
+  "iso8859-9",		"tr",
+  "iso8859-10",		"",
+  "iso8859-11",		"",
+  "iso8859-13",		"lt",
+  "iso8859-14",		"ga",
+  "iso8859-15",		"fr",
+  "koi8-r",		"ru-ru",
+  "big5-0",		"zh-tw",
+  "ksc5601.1987-0",	"ko",
+  "gb2312.1980-0",	"zh-cn",
+  "jisx0201.1976-0",	"ja",
+  "symbol",		"",
+  "dingbats",		"",
+  "koi8-u",		"ru-ua",
+  "big5hkscs-0",	"zh-hk",
+  "iso10646-1",		"",
+  NULL
+};
+
+// These characters are used to guess the font height and width
+static unsigned int extent_test_chars[] =
+{
+  '0', '1', '8', 'a', 'd', 'x', 'm', 'y', 'g', 'W', 'X', '\'', '_',
+  0x00cd, 0x00d5, 0x0114, 0x0177, 0x0643, 0x304c, 0x672c,	// ÍÕĔŷﻙが本 
+  '\0'
+};
+
 int fl_font_ = 0;
 int fl_size_ = 0;
-XFontStruct* fl_xfont = 0;
+XUtf8FontStruct* fl_xfont = 0;
 void *fl_xftfont = 0;
-const char* fl_encoding_ = "iso8859-1";
 Fl_FontSize* fl_fontsize = 0;
 
 void fl_font(int fnum, int size) {
@@ -100,17 +136,14 @@ void fl_font(int fnum, int size) {
     fl_font_ = 0; fl_size_ = 0;
     return;
   }
-  if (fnum == fl_font_ && size == fl_size_
-      && fl_fontsize
-      && !strcasecmp(fl_fontsize->encoding, fl_encoding_))
+  if (fnum == fl_font_ && size == fl_size_ && fl_fontsize)
     return;
   fl_font_ = fnum; fl_size_ = size;
   Fl_Fontdesc *font = fl_fonts + fnum;
   Fl_FontSize* f;
   // search the fontsizes we have generated already
   for (f = font->first; f; f = f->next) {
-    if (f->size == size && !strcasecmp(f->encoding, fl_encoding_))
-      break;
+    if (f->size == size)  break;
   }
   if (!f) {
     f = new Fl_FontSize(font->name);
@@ -124,7 +157,36 @@ void fl_font(int fnum, int size) {
   fl_xftfont = (void*)f->font;
 }
 
-static XftFont* fontopen(const char* name, bool core) {
+static void
+fill_match_metrics(XftMatch* rec)
+{
+  rec->ascent   = 0;
+  rec->descent  = 0;
+  rec->offset   = 0;
+
+  // Calculate ascent and descent from test glyphs
+  for (unsigned int* ucs = extent_test_chars;  *ucs;  ucs++)
+  {
+    // Ignore characters not used by current encoding
+    char dummy[2];
+    if (ucs2fontmap(dummy, *ucs, rec->enc_num) < 0)  continue;
+    XGlyphInfo g;
+    XftTextExtents16(fl_display, rec->font, (XftChar16*)ucs, 1, &g);
+    int ascent = g.y;
+    int descent = g.height - g.y;
+    if (ascent > rec->ascent)  rec->ascent = ascent;
+    if (descent > rec->descent)  rec->descent = descent;
+  }
+
+  // When ascent and descent not found, trust the font
+  if (rec->ascent == 0 && rec->descent == 0)
+  {
+    rec->ascent  = rec->font->ascent;
+    rec->descent = rec->font->descent;
+  }
+}
+
+static XftFontList* fontopen(const char* name, bool core) {
   // Check: does it look like we have been passed an old-school XLFD fontname?
   bool is_xlfd = false;
   int hyphen_count = 0;
@@ -139,9 +201,8 @@ static XftFont* fontopen(const char* name, bool core) {
 
   fl_open_display();
 
-  if(!is_xlfd) { // Not an XLFD - open as a XFT style name
-    XftFont *the_font; // the font we will return;
     XftPattern *fnt_pat = XftPatternCreate(); // the pattern we will use for matching
+  if(!is_xlfd) { // Not an XLFD - open as a XFT style name
     int slant = XFT_SLANT_ROMAN;
     int weight = XFT_WEIGHT_MEDIUM;
 
@@ -202,40 +263,90 @@ static XftFont* fontopen(const char* name, bool core) {
     XftPatternAddInteger(fnt_pat, XFT_WEIGHT, weight);
     XftPatternAddInteger(fnt_pat, XFT_SLANT, slant);
     XftPatternAddDouble (fnt_pat, XFT_PIXEL_SIZE, (double)fl_size_);
-    XftPatternAddString (fnt_pat, XFT_ENCODING, fl_encoding_);
     if (core) {
       XftPatternAddBool(fnt_pat, XFT_CORE, FcTrue);
       XftPatternAddBool(fnt_pat, XFT_RENDER, FcFalse);
     }
+  }
+  else {
+    if(comma_count) { // multiple comma-separated XLFDs were passed
+      char *local_name = strdup(name); // duplicate the full name so we can edit the copy
+      char *curr = local_name; // points to first name in string
+      char *nxt; // next name in string
+      do {
+        nxt = strchr(curr, ','); // find comma seperator
+        if (nxt) {
+          *nxt = 0; // terminate first name
+          nxt++; // first char of next name
+        }
+
+	// Add the current name to the match pattern
+	XftPatternAddString(fnt_pat, XFT_XLFD, curr);
+
+        if(nxt) curr = nxt; // move onto next name (if it exists)
+
+        comma_count--; // decrement name sections count
+      } while (comma_count >= 0);
+      free(local_name); // release our local copy of font names
+    }
+    else { // single name was passed - add it directly
+      XftPatternAddString(fnt_pat, XFT_XLFD, name);
+    }
+  }
 
     XftPattern *match_pat;  // the best available match on the system
     XftResult match_result; // the result of our matching attempt
-    // query the system to find a match for this font
+  // query the system to find a matching font for each encoding
+  XftFontList* list = (XftFontList*)calloc(1, sizeof(XftFontList));
+  for (int n = 0;  enc_strings[n];  n += 2)
+  {
+    // Attempt to find a font for the required encoding
+    XftFont* fnt = NULL;
+    int      enc_num = encoding_number(enc_strings[n]);
+    if (enc_num >= 0)
+    {
+      XftPatternDel(fnt_pat, FC_LANG);
+      if (strlen(enc_strings[n+1]))
+	XftPatternAddString(fnt_pat, FC_LANG, enc_strings[n + 1]);
     match_pat = XftFontMatch(fl_display, fl_screen, fnt_pat, &match_result);
+      if (match_pat)
+      {
     // open the matched font
-    the_font = XftFontOpenPattern(fl_display, match_pat);
-    // Tidy up the resources we allocated
-    XftPatternDestroy(fnt_pat);
-//  XftPatternDestroy(match_pat); // FontConfig will destroy this resource for us. We must not!
-    return the_font;
-  }
-  else { // We were passed a font name in XLFD format
-    char *local_name = strdup(name);
-    if(comma_count) { // This means we were passed multiple XLFD's
-      char *pc = strchr(local_name, ',');
-      *pc = 0; // terminate the XLFD at the first comma
+	fnt = XftFontOpenPattern(fl_display, match_pat);
+	if (!fnt)  XftPatternDestroy(match_pat);
+      }
     }
-    XftFont *the_font = XftFontOpenXlfd(fl_display, fl_screen, local_name);
-    free(local_name);
-   return the_font;
+
+    // When a matching font is found, append to font list
+    if (fnt)
+    {
+      list->count ++;
+      list->matches = (XftMatch*)realloc(list->matches,
+	sizeof(XftMatch) * list->count);
+
+      XftMatch& rec = list->matches[list->count - 1];
+      rec.font     = fnt;
+      rec.enc_str  = enc_strings[n];
+      rec.lang_str = enc_strings[n + 1];
+      rec.enc_num  = enc_num;
+      fill_match_metrics(&rec);
+
+      // Update ascent and descent of combined font set
+      if (rec.ascent  > list->ascent)   list->ascent  = rec.ascent;
+      if (rec.descent > list->descent)  list->descent = rec.descent;
   }
+  }
+
+  // Tidy up the resources we allocated
+  XftPatternDestroy(fnt_pat);
+  return list;
 } // end of fontopen
 
 Fl_FontSize::Fl_FontSize(const char* name) {
-  encoding = fl_encoding_;
   size = fl_size_;
 #if HAVE_GL
   listbase = 0;
+  for (int u = 0; u < 64; u++) glok[u] = 0;
 #endif // HAVE_GL
   font = fontopen(name, false);
 }
@@ -243,6 +354,8 @@ Fl_FontSize::Fl_FontSize(const char* name) {
 Fl_FontSize::~Fl_FontSize() {
   if (this == fl_fontsize) fl_fontsize = 0;
 //  XftFontClose(fl_display, font);
+  free(font->matches);
+  free(font);
 }
 
 int fl_height() {
@@ -255,15 +368,134 @@ int fl_descent() {
   else return -1;
 }
 
-double fl_width(const char *str, int n) {
-  if (!current_font) return -1.0;
+static int
+fl_width(XftFont* fnt, const xchar* wstr, int n)
+{
   XGlyphInfo i;
-  XftTextExtents8(fl_display, current_font, (XftChar8 *)str, n, &i);
+  XftTextExtents16(fl_display, fnt, (XftChar16*)wstr, n, &i);
   return i.xOff;
 }
 
-double fl_width(uchar c) {
-  return fl_width((const char *)(&c), 1);
+// This function is used internally to avoid duplicate code in fl_width()
+// and fl_draw().  A non-NULL XftDraw parameter causes the actual string to
+// be drawn
+static double fl_width_(const char* str, int n,
+  XftDraw* draw = NULL, XftColor* color = NULL, int x = 0, int y = 0)
+{
+  XftMatch* matches;    // fonts array
+  xchar     buf[128];   // drawing buffer
+  int       i;          // current byte in the xchar buffer
+  int       fnum;       // index of the current font in the fonts array
+  int       last_fnum;  // font index of the previous char
+  int       count;      // quantity of fonts in the font array
+  char      glyph[2];   // byte1 and byte2 value of the UTF-8 char
+  int       org_x = x;
+
+  count = current_font->count;
+
+  // There are no fonts in current_font
+  if (count < 1)  return -1.0;
+
+  matches = current_font->matches;
+  i = 0;
+  fnum = 0;
+
+  while(fnum < count && !matches[fnum].font) fnum++;
+  if (fnum >= count) {
+    /* there is no valid font for the X server */
+    return 0;
+  }
+
+  last_fnum = fnum;
+
+  while (n > 0) {
+    int                 ulen; /* byte length of the UTF-8 char */
+    unsigned int        ucs;  /* Unicode value of the UTF-8 char */
+    unsigned int        no_spc; /* Spacing char equivalent of a 
+                                   non-spacing char */
+
+    if (i > 120) {
+      /*** draw the buffer **/
+      if (draw)
+	XftDrawString16(draw, color, matches[fnum].font, x, y,
+	  (XftChar16*)buf, i);
+      x += fl_width(matches[fnum].font, buf, i);
+      i = 0;
+    }
+
+    ulen = XFastConvertUtf8ToUcs((unsigned char*)str, n, &ucs); 
+    if (ulen < 1) ulen = 1; 
+
+    no_spc = XUtf8IsNonSpacing(ucs);
+    if (no_spc) ucs = no_spc; 
+
+    // Find the first encoding which can be used to draw the glyph
+    for (fnum = 0;  fnum < count;  fnum++)
+      if (ucs2fontmap(glyph, ucs, matches[fnum].enc_num) >= 0) 
+	if (matches[fnum].enc_num != 0)  break;
+    if (fnum == count) {
+      // The char is not valid in all encodings ->
+      // draw it using the first font
+      fnum = 0;
+      ucs = '?';
+    }
+
+    if (last_fnum != fnum || no_spc) {
+      if (draw)
+	XftDrawString16(draw, color, matches[last_fnum].font, x, y,
+	  (XftChar16*)buf, i);
+      x += fl_width(matches[last_fnum].font, buf, i);
+      i = 0;
+      *buf = ucs;
+      if (no_spc) {
+	// Go back to draw the non-spacing char over the previous char
+        x -= fl_width(matches[fnum].font, buf, 1);
+      }
+    } else {
+      *(buf + i) = ucs;
+    }
+    last_fnum = fnum;
+    i++;
+    str += ulen;
+    n -= ulen;
+  }
+
+  if (draw)
+    XftDrawString16(draw, color, matches[last_fnum].font, x, y,
+      (XftChar16*)buf, i);
+  x += fl_width(matches[fnum].font, buf, i);
+
+  return (x - org_x);
+}
+
+double fl_width(const char *str, int n) {
+  return fl_width_(str, n);
+}
+
+double fl_width(unsigned int ucs) {
+  if (!current_font) return -1.0;
+  XftMatch* matches;      // Fonts array
+  int       fnum;       // Index of the current font in the fonts array
+  int       count;      // Quantity of fonts in the font array
+  char      glyph[2];   // Byte1 and byte2 value of the UTF-8 char
+
+  count = current_font->count;
+
+  // There are no fonts in current_font
+  if (count < 1)  return 0;
+
+  matches = current_font->matches;
+
+  for (fnum = 0;  fnum < count;  fnum++)
+    if (ucs2fontmap(glyph, ucs, matches[fnum].enc_num) >= 0) 
+      if (matches[fnum].enc_num != 0)  break;
+  if (fnum == count) {
+    // The char is not valid in all encodings ->
+    // draw it using the first font
+    fnum = 0;
+  }
+
+  return fl_width(matches[fnum].font, (xchar*)&ucs, 1);
 }
 
 #if HAVE_GL
@@ -433,11 +665,10 @@ void fl_draw(const char *str, int n, int x, int y) {
   color.color.blue  = ((int)b)*0x101;
   color.color.alpha = 0xffff;
 
-  XftDrawString8(draw, &color, current_font, x, y, (XftChar8 *)str, n);
+  fl_width_(str, n, draw, &color, x, y);
 }
 
-void fl_draw(const char* str, int n, float x, float y) {
-  fl_draw(str, n, (int)x, (int)y);
+void fl_rtl_draw(const char *str, int n, int x, int y) {
 }
 
 //

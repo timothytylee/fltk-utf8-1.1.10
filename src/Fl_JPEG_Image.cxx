@@ -35,6 +35,7 @@
 //
 
 #include <FL/Fl_JPEG_Image.H>
+#include <FL/fl_utf8.H>
 #include <config.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,7 +111,7 @@ Fl_JPEG_Image::Fl_JPEG_Image(const char *jpeg)	// I - File to load
   array = (uchar *)0;
 
   // Open the image file...
-  if ((fp = fopen(jpeg, "rb")) == NULL) return;
+  if ((fp = fl_fopen(jpeg, "rb")) == NULL) return;
 
   // Setup the decompressor info and read the header...
   dinfo.err                = jpeg_std_error((jpeg_error_mgr *)&jerr);

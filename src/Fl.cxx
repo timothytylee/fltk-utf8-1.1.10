@@ -919,6 +919,12 @@ int Fl::handle(int e, Fl_Window* window)
 extern void fl_destroy_xft_draw(Window);
 #endif
 
+#if !defined(WIN32) && !defined(__APPLE_QD__) && !defined(__APPLE_QUARTZ__)
+extern XIM fl_xim_im;
+extern XIC fl_xim_ic;
+extern int window_count;
+#endif
+
 void Fl_Window::hide() {
   clear_visible();
 
@@ -1004,6 +1010,23 @@ void Fl_Window::hide() {
 #else
 # if USE_XFT
   fl_destroy_xft_draw(ip->xid);
+# endif
+# if !defined(WIN32) && !defined(__APPLE_QD__) && !defined(__APPLE_QUARTZ__)
+  if (fl_xim_ic) XUnsetICFocus(fl_xim_ic);
+  window_count--;
+  if (window_count == 0)
+  {
+    if (fl_xim_ic)
+    {
+      XDestroyIC(fl_xim_ic);
+      fl_xim_ic = NULL;
+    }
+    if (fl_xim_im)
+    {
+      XCloseIM(fl_xim_im);
+      fl_xim_im = NULL;
+    }
+  }
 # endif
   XDestroyWindow(fl_display, ip->xid);
 #endif

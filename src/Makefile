@@ -152,6 +152,7 @@ CPPFILES = \
 	fl_shortcut.cxx \
 	fl_show_colormap.cxx \
 	fl_symbols.cxx \
+	fl_utf8.cxx \
 	fl_vertex.cxx \
 	screen_xywh.cxx
 
@@ -191,6 +192,11 @@ CFILES = fl_call_main.c flstring.c scandir.c numericsort.c vsnprintf.c
 ################################################################
 
 include ../makeinclude
+VPATH = .:../xutf8
+CFILES += case.o is_right2left.o is_spacing.o utf8Utils.o
+ifneq ($(EXEEXT),.exe)
+	CFILES += keysym2Ucs.o utf8Input.o utf8Wrap.o 
+endif
 
 OBJECTS = $(CPPFILES:.cxx=.o) $(CFILES:.c=.o)
 GLOBJECTS = $(GLCPPFILES:.cxx=.o)

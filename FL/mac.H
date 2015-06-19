@@ -72,6 +72,7 @@ public:
   CursHandle cursor;
   static Fl_X* first;
   static Fl_X* i(const Fl_Window* w) {return w->i;}
+  void setwindow(Fl_Window* wi) {w=wi; wi->i=this;}
   static int fake_X_wm(const Fl_Window*,int&,int&,int&,int&,int&);
   static void make(Fl_Window*);
   void flush();

@@ -29,6 +29,7 @@
 /* Emulation of posix scandir() call */
 
 #include <FL/filename.H>
+#include <FL/fl_utf8.H>
 #include "flstring.h"
 #include <windows.h>
 #include <stdlib.h>
@@ -39,13 +40,15 @@ int fl_scandir(const char *dirname, struct dirent ***namelist,
   int len;
   char *findIn, *d, is_dir = 0;
   WIN32_FIND_DATA find;
+  WIN32_FIND_DATAW findw;
   HANDLE h;
   int nDir = 0, NDir = 0;
   struct dirent **dir = 0, *selectDir;
   unsigned long ret;
+  unsigned long wbuf;
 
   len    = strlen(dirname);
-  findIn = (char *)malloc((size_t)(len+5));
+  findIn = (char *)malloc((size_t)(len+10));
 
   if (!findIn) return -1;
 
@@ -61,7 +64,15 @@ int fl_scandir(const char *dirname, struct dirent ***namelist,
     if (attr&FILE_ATTRIBUTE_DIRECTORY) 
       strcpy(d, "\\*");
   }
-  if ((h=FindFirstFile(findIn, &find))==INVALID_HANDLE_VALUE) {
+  if (fl_is_nt4()) {
+    wchar_t* wbuf = (wchar_t*)malloc(sizeof(short) * (len + 10));
+    wbuf[fl_utf2unicode(findIn, strlen(findIn), wbuf)] = 0;
+    h = FindFirstFileW(wbuf, &findw);
+    free(wbuf);
+  } else {
+    h = FindFirstFileA(fl_utf2mbcs(findIn), &find);
+  }
+  if (h == INVALID_HANDLE_VALUE) {
     free(findIn);
     ret = GetLastError();
     if (ret != ERROR_NO_MORE_FILES) {
@@ -71,9 +82,25 @@ int fl_scandir(const char *dirname, struct dirent ***namelist,
     return nDir;
   }
   do {
-    selectDir=(struct dirent*)malloc(sizeof(struct dirent)+strlen(find.cFileName)+2);
-    strcpy(selectDir->d_name, find.cFileName);
-    if (find.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+    int l;
+    if (fl_is_nt4()) {
+      l = wcslen(findw.cFileName);
+    } else {
+      l = strlen(find.cFileName);
+    }
+    selectDir=(struct dirent*)malloc(sizeof(struct dirent)+l * 5+1);
+    if (fl_is_nt4()) {
+      l = fl_unicode2utf(findw.cFileName, l, selectDir->d_name);
+    } else {
+      wbuf = (unsigned short*) malloc(sizeof(short) *(l+1));
+      l = mbstowcs(wbuf, find.cFileName, l);
+      l = fl_unicode2utf(wbuf, l, selectDir->d_name);
+      free(wbuf);
+    }
+    selectDir->d_name[l] = 0;
+    if ((fl_is_nt4() &&  findw.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+        (!fl_is_nt4() && find.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) 
+    {
       /* Append a trailing slash to directory names... */
       strcat(selectDir->d_name, "/");
     }
@@ -91,7 +118,8 @@ int fl_scandir(const char *dirname, struct dirent ***namelist,
     } else {
       free(selectDir);
     }
-  } while (FindNextFile(h, &find));
+  } while ((fl_is_nt4() && FindNextFileW(h, &findw)) ||
+	  (!fl_is_nt4() && FindNextFile(h, &find)));
   ret = GetLastError();
   if (ret != ERROR_NO_MORE_FILES) {
     /* don't return an error code, because the dir list may still be valid

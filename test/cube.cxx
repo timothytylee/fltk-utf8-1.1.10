@@ -34,6 +34,7 @@
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Radio_Light_Button.H>
 #include <FL/Fl_Slider.H>
+#include <FL/fl_utf8.H>
 #include <stdlib.h>
 
 #if !HAVE_GL
@@ -117,11 +118,16 @@ void cube_box::draw() {
   glTranslatef(-1.0, 1.2f, -1.5);
   glScalef(float(size),float(size),float(size));
   drawcube(wire);
-  glPopMatrix();
-  gl_color(FL_GRAY);
-  glDisable(GL_DEPTH_TEST);
-  gl_draw(wire ? "Cube: wire" : "Cube: flat", -4.5f, -4.5f );
   glEnable(GL_DEPTH_TEST);
+  glPopMatrix();
+  glDisable(GL_DEPTH_TEST);
+  static char buf[80];
+  unsigned short b[] = {'U', 'T', 'F', 0xAE, 0xA9, 0x39e};
+  int l = fl_unicode2utf((xchar*)b, 6, buf);
+  buf[l] = 0;
+  gl_color(FL_GRAY);
+  gl_draw(wire ? "Cube: wire" : buf, 0, 0);
+
 }
 
 int cube_box::handle(int e) {

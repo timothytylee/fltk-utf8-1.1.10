@@ -36,11 +36,13 @@
 #include <FL/fl_draw.H>
 #include <FL/fl_ask.H>
 #include <math.h>
+#include <FL/fl_utf8.H>
 #include "flstring.h"
 #include <stdlib.h>
 #include <ctype.h>
 
 #define MAXBUF 1024
+#define ISBLANK(c)	((c) == ' ' || (c) == '\t')
 
 extern void fl_draw(const char*, int, float, float);
 
@@ -57,16 +59,24 @@ const char* Fl_Input_::expand(const char* p, char* buf) const {
   int width_to_lastspace = 0;
   int word_count = 0;
   int word_wrap;
+  const char *pe = p + strlen(p);
 
   if (input_type()==FL_SECRET_INPUT) {
-    while (o<e && p < value_+size_) {*o++ = '*'; p++;}
+    while (o<e && p < value_+size_) {
+      if (fl_utflen((unsigned char*)p, pe - p) >= 1) *o++ = '*';
+      p++;
+    }
   } else while (o<e) {
-    if (wrap() && (p >= value_+size_ || isspace(*p & 255))) {
+    unsigned int ucs;
+    int          u8len = fl_utf2ucs((uchar*)p, pe - p, &ucs);
+    if (wrap() && (p >= value_+size_ || (u8len > 0) && fl_is_linebreak(ucs))) {
       word_wrap = w() - Fl::box_dw(box()) - 2;
       width_to_lastspace += (int)fl_width(lastspace_out, o-lastspace_out);
       if (p > lastspace+1) {
 	if (word_count && width_to_lastspace > word_wrap) {
-	  p = lastspace; o = lastspace_out; break;
+	  p = lastspace; o = lastspace_out;
+	  if (*p != ' ' && *p != '\n')  p--;
+	  break;
 	}
 	word_count++;
       }
@@ -75,34 +85,26 @@ const char* Fl_Input_::expand(const char* p, char* buf) const {
     }
 
     if (p >= value_+size_) break;
-    int c = *p++ & 255;
-    if (c < ' ' || c == 127) {
-      if (c=='\n' && input_type()==FL_MULTILINE_INPUT) {p--; break;}
-      if (c == '\t' && input_type()==FL_MULTILINE_INPUT) {
-	for (c = (o-buf)%8; c<8 && o<e; c++) *o++ = ' ';
+    if (u8len > 0) {
+      if (ucs < ' ' || ucs == 127) {
+	if (ucs == '\n' && input_type()==FL_MULTILINE_INPUT) break;
+	if (ucs == '\t' && input_type()==FL_MULTILINE_INPUT) {
+	  int n;
+	  for (n = fl_utf_nb_char((uchar*)buf, o-buf)%8; n<8 && o<e; n++) {
+            *o++ = ' ';
+          }
       } else {
 	*o++ = '^';
-	*o++ = c ^ 0x40;
+          *o++ = ucs ^ 0x40;
       }
-#ifdef __APPLE__
-    // In MacRoman, all characters are defined, and non-break-space is 0xca
-    } else if (c == 0xCA) { // nbsp
-      *o++ = ' ';
-#else
-    // in ISO 8859-1, undefined characters are rendered as octal
-    // this is commented out since most X11 seems to use MSWindows Latin-1
-    //} else if (c >= 128 && c < 0xA0) {
-      // these codes are not defined in ISO code, so we output the octal code instead
-    //  *o++ = '\\'; 
-    //  *o++ = ((c>>6)&0x03) + '0'; 
-    //  *o++ = ((c>>3)&0x07) + '0'; 
-    //  *o++ = (c&0x07) + '0';
-    } else if (c == 0xA0) { // nbsp
-      *o++ = ' ';
-#endif
     } else {
-      *o++ = c;
+        memcpy(o, p, u8len);
+        o += u8len;
     }
+      p += u8len;
+    }
+    else
+      p++;
   }
   *o = 0;
   return p;
@@ -116,23 +118,24 @@ double Fl_Input_::expandpos(
   int* returnn		// return offset into buf here
 ) const {
   int n = 0;
-  if (input_type()==FL_SECRET_INPUT) n = e-p;
-  else while (p<e) {
-    int c = *p++ & 255;
+  int chr = 0;
+  if (input_type()==FL_SECRET_INPUT) {
+    while (p<e) {
+      if (fl_utflen((unsigned char*)p, e-p) >= 1) n++;
+      p++;
+    }
+  } else while (p<e) {
+    int c = *p & 255;
     if (c < ' ' || c == 127) {
-      if (c == '\t' && input_type()==FL_MULTILINE_INPUT) n += 8-(n%8);
-      else n += 2;
-#ifdef __APPLE__
-    // in MacRoman, all characters are defined
-#else
-    // in Windows Latin-1 all characters are defined
-    //} else if (c >= 128 && c < 0xA0) {
-      // these codes are not defined in ISO code, so we output the octal code instead
-    //  n += 4;
-#endif
+      if (c == '\t' && input_type()==FL_MULTILINE_INPUT) {
+        n += 8-(chr%8);
+        chr += 7-(chr%8);
+      } else n += 2;
     } else {
       n++;
     }
+    chr += fl_utflen((unsigned char*)p, e-p) >= 1;
+    p++;
   }
   if (returnn) *returnn = n;
   return fl_width(buf, n);
@@ -199,6 +202,7 @@ void Fl_Input_::drawtext(int X, int Y, int W, int H) {
   // count how many lines and put the last one into the buffer:
   // And figure out where the cursor is:
   int height = fl_height();
+  int threshold = height / 2;
   int lines;
   int curx, cury;
   for (p=value(), curx=cury=lines=0; ;) {
@@ -208,15 +212,15 @@ void Fl_Input_::drawtext(int X, int Y, int W, int H) {
       if (Fl::focus()==this && !was_up_down) up_down_pos = curx;
       cury = lines*height;
       int newscroll = xscroll_;
-      if (curx > newscroll+W-20) {
+      if (curx > newscroll+W-threshold) {
 	// figure out scrolling so there is space after the cursor:
-	newscroll = curx+20-W;
+	newscroll = curx+threshold-W;
 	// figure out the furthest left we ever want to scroll:
 	int ex = int(expandpos(p, e, buf, 0))+2-W;
 	// use minimum of both amounts:
 	if (ex < newscroll) newscroll = ex;
-      } else if (curx < newscroll+20) {
-	newscroll = curx-20;
+      } else if (curx < newscroll+threshold) {
+	newscroll = curx-threshold;
       }
       if (newscroll < 0) newscroll = 0;
       if (newscroll != xscroll_) {
@@ -329,8 +333,7 @@ void Fl_Input_::drawtext(int X, int Y, int W, int H) {
   CONTINUE:
     ypos += height;
     if (e >= value_+size_) break;
-    if (*e == '\n' || *e == ' ') e++;
-    p = e;
+    p = e+1;
   }
 
   // for minimal update, erase all lines below last one if necessary:
@@ -344,6 +347,10 @@ void Fl_Input_::drawtext(int X, int Y, int W, int H) {
   }
 
   fl_pop_clip();
+  if (Fl::focus() == this) {
+       fl_set_spot(textfont(), textsize(),
+               (int)xpos+curx, Y+ypos-fl_descent(), W, H);
+  }
 }
 
 static int isword(char c) {
@@ -352,16 +359,29 @@ static int isword(char c) {
 
 int Fl_Input_::word_end(int i) const {
   if (input_type() == FL_SECRET_INPUT) return size();
-  //while (i < size() && !isword(index(i))) i++;
-  while (i < size() && isword(index(i))) i++;
+  uchar*       e = (uchar*)value_ + size_;
+  unsigned int ucs;
+  for (uchar* p = (uchar*)value_ + i;  p < e;  i++, p++)
+  {
+    if (fl_utf2ucs(p, e - p, &ucs) < 1)  continue;
+    if (fl_is_linebreak(ucs))  break;
+    if ((*p < 0x80) && !isword(*p))  break;
+  }
   return i;
 }
 
 int Fl_Input_::word_start(int i) const {
   if (input_type() == FL_SECRET_INPUT) return 0;
-//   if (i >= size() || !isword(index(i)))
-//     while (i > 0 && !isword(index(i-1))) i--;
-  while (i > 0 && isword(index(i-1))) i--;
+  uchar*       e = (uchar*)value_ + size_;
+  unsigned int ucs;
+  for (uchar* p = (uchar*)value_ + i;  i > 0;  i--)
+  {
+    int u8len = fl_utf2ucs(p, e - p, &ucs);
+    p--;
+    if (u8len < 1)  continue;
+    if (fl_is_linebreak(ucs))  break;
+    if ((*p < 0x80) && !isword(*p))  break;
+  }
   return i;
 }
 
@@ -423,14 +443,20 @@ void Fl_Input_::handle_mouse(int X, int Y, int /*W*/, int /*H*/, int drag) {
   const char *l, *r, *t; double f0 = Fl::event_x()-X+xscroll_;
   for (l = p, r = e; l<r; ) {
     double f;
-    t = l+(r-l+1)/2;
+    int cw = fl_utflen((unsigned char*)l, e-l);
+    if (cw < 1) cw = 1;
+    t = l+cw;
     f = X-xscroll_+expandpos(p, t, buf, 0);
     if (f <= Fl::event_x()) {l = t; f0 = Fl::event_x()-f;}
-    else r = t-1;
+    else r = t-cw;
   }
   if (l < e) { // see if closer to character on right:
-    double f1 = X-xscroll_+expandpos(p, l+1, buf, 0)-Fl::event_x();
-    if (f1 < f0) l = l+1;
+    double f1;
+    int cw = fl_utflen((unsigned char*)l, e-l);
+    if (cw > 0) {
+      f1 = X-xscroll_+expandpos(p, l + cw, buf, 0) - Fl::event_x();
+      if (f1 < f0) l = l+cw;
+    }
   }
   newpos = l-value();
 
@@ -470,12 +496,33 @@ void Fl_Input_::handle_mouse(int X, int Y, int /*W*/, int /*H*/, int drag) {
 }
 
 int Fl_Input_::position(int p, int m) {
+  int is_same = 0;
   was_up_down = 0;
   if (p<0) p = 0;
   if (p>size()) p = size();
   if (m<0) m = 0;
   if (m>size()) m = size();
+  if (p == m) is_same = 1;
+
+  while (p < position_ && p > 0 && (size() - p) > 0 &&
+       (fl_utflen((unsigned char *)value() + p, size() - p) < 1)) { p--; }
+  int ul = fl_utflen((unsigned char *)value() + p, size() - p);
+  while (p < size() && p > position_ && ul < 0) {
+       p++;
+       ul = fl_utflen((unsigned char *)value() + p, size() - p);
+  }
+
+  while (m < mark_ && m > 0 && (size() - m) > 0 &&
+       (fl_utflen((unsigned char *)value() + m, size() - m) < 1)) { m--; }
+  ul = fl_utflen((unsigned char *)value() + m, size() - m);
+  while (m < size() && m > mark_ && ul < 0) {
+       m++;
+       ul = fl_utflen((unsigned char *)value() + m, size() - m);
+  }
+  if (is_same) m = p;
   if (p == position_ && m == mark_) return 0;
+
+
   //if (Fl::selection_owner() == this) Fl::selection_owner(0);
   if (p != m) {
     if (p != position_) minimal_update(position_, p);
@@ -509,6 +556,8 @@ int Fl_Input_::up_down_position(int i, int keepmark) {
     int f = (int)expandpos(p, t, buf, 0);
     if (f <= up_down_pos) l = t; else r = t-1;
   }
+  e = value() + size();
+  while ((l < e) && (fl_utflen((unsigned char *)l, e - l) < 1))  l--;
   int j = l-value();
   j = position(j, keepmark ? mark_ : j);
   was_up_down = 1;
@@ -559,6 +608,13 @@ int Fl_Input_::replace(int b, int e, const char* text, int ilen) {
   if (b>size_) b = size_;
   if (e>size_) e = size_;
   if (e<b) {int t=b; b=e; e=t;}
+  while (b != e && b > 0 && (size_ - b) > 0 &&
+       (fl_utflen((unsigned char *)value_ + b, size_ - b) < 1)) { b--; }
+  int ul = fl_utflen((unsigned char *)value_ + e, size_ - e);
+  while (e < size_ && e > 0 && ul < 0) {
+       e++;
+       ul = fl_utflen((unsigned char *)value_ + e, size_ - e );
+  }
   if (text && !ilen) ilen = strlen(text);
   if (e<=b && !ilen) return 0; // don't clobber undo for a null operation
   if (size_+ilen-(e-b) > maximum_size_) {
@@ -618,7 +674,7 @@ int Fl_Input_::replace(int b, int e, const char* text, int ilen) {
     for (i=0; i<ilen; i++) 
       if (text[i]==' ') break;
     if (i==ilen)
-      while (b > 0 && !isspace(index(b) & 255) && index(b)!='\n') b--;
+      while (b > 0 && !ISBLANK(index(b)) && index(b)!='\n') b--;
     else
       while (b > 0 && index(b)!='\n') b--;
   }
@@ -702,6 +758,7 @@ int Fl_Input_::handletext(int event, int X, int Y, int W, int H) {
     return 1;
 
   case FL_FOCUS:
+    fl_set_spot(textfont(), textsize(), x(), y(), w(), h());
     if (mark_ == position_) {
       minimal_update(size()+1);
     } else //if (Fl::selection_owner() != this)
@@ -715,6 +772,7 @@ int Fl_Input_::handletext(int event, int X, int Y, int W, int H) {
     } else //if (Fl::selection_owner() != this)
       minimal_update(mark_, position_);
   case FL_HIDE:
+    fl_reset_spot();
     if (!readonly() && (when() & FL_WHEN_RELEASE))
       maybe_do_callback();
     return 1;
@@ -735,7 +793,7 @@ int Fl_Input_::handletext(int event, int X, int Y, int W, int H) {
     return 1;
 
   case FL_RELEASE:
-    copy(0);
+    if (Fl::event_button() == 1) copy(0);
     return 1;
 
   case FL_PASTE: {
@@ -751,10 +809,10 @@ int Fl_Input_::handletext(int event, int X, int Y, int W, int H) {
     // strip trailing control characters and spaces before pasting:
     const char* t = Fl::event_text();
     const char* e = t+Fl::event_length();
-    if (input_type() != FL_MULTILINE_INPUT) while (e > t && isspace(*(e-1) & 255)) e--;
+    if (input_type() != FL_MULTILINE_INPUT) while (e > t && ISBLANK(*(e-1))) e--;
     if (!t || e <= t) return 1; // Int/float stuff will crash without this test
     if (input_type() == FL_INT_INPUT) {
-      while (isspace(*t & 255) && t < e) t ++;
+      while (ISBLANK(*t) && t < e) t ++;
       const char *p = t;
       if (*p == '+' || *p == '-') p ++;
       if (strncmp(p, "0x", 2) == 0) {
@@ -768,7 +826,7 @@ int Fl_Input_::handletext(int event, int X, int Y, int W, int H) {
         return 1;
       } else return replace(0, size(), t, e - t);
     } else if (input_type() == FL_FLOAT_INPUT) {
-      while (isspace(*t & 255) && t < e) t ++;
+      while (ISBLANK(*t) && t < e) t ++;
       const char *p = t;
       if (*p == '+' || *p == '-') p ++;
       while (isdigit(*p & 255) && p < e) p ++;

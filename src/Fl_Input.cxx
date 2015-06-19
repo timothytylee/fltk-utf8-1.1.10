@@ -65,7 +65,7 @@ int Fl_Input::shift_up_down_position(int p) {
 // behavior where moving off the end of an input field will move the
 // cursor into the next field:
 // define it as 1 to prevent cursor movement from going to next field:
-#define NORMAL_INPUT_MOVE 0
+#define NORMAL_INPUT_MOVE 1
 
 #define ctrl(x) ((x)^0x40)
 
@@ -214,6 +214,7 @@ int Fl_Input::handle_key() {
   }
 
   int i;
+  uchar* p;
   switch (ascii) {
   case ctrl('A'):
     return shift_position(line_start(position())) + NORMAL_INPUT_MOVE;
@@ -230,7 +231,14 @@ int Fl_Input::handle_key() {
     if (mark() != position()) return cut();
     else return cut(1);
   case ctrl('E'):
-    return shift_position(line_end(position())) + NORMAL_INPUT_MOVE;
+    i = line_end(position());
+    p = (uchar*)value() + i;
+    if (i && *p != ' ' && *p != '\n' && *p != '\0')
+      do {
+	i--;
+	p--;
+      } while (i && *p >= 0x80 && *p <= 0xbf);
+    return shift_position(i) + NORMAL_INPUT_MOVE;
   case ctrl('F'):
     return shift_position(position()+1) + NORMAL_INPUT_MOVE;
   case ctrl('H'):
@@ -461,6 +469,30 @@ int Fl_Input::handle(int event) {
     take_focus();
     return 1;
 
+  case FL_MOUSEWHEEL:
+    if (Fl::e_dy > 0)
+    {
+      int i = position();
+      int repeat_num = Fl::e_dy;
+      while (repeat_num--) {  
+	i = line_end(i);
+	if (i >= size()) return NORMAL_INPUT_MOVE;
+	i++;
+      }
+      shift_up_down_position(i);
+    }
+    else
+    {
+      int i = position();
+      int repeat_num = -Fl::e_dy;
+      while(repeat_num--) {
+	i = line_start(i);
+	if (!i) return NORMAL_INPUT_MOVE;
+	i--;
+      }
+      shift_up_down_position(line_start(i));
+    }
+    return 1;
   }
   Fl_Boxtype b = box();
   return Fl_Input_::handletext(event,

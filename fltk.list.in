@@ -335,6 +335,7 @@ l 0000 root sys $includedir/FL/fl_file_chooser.H Fl_File_Chooser.H
 l 0000 root sys $includedir/FL/fl_message.h fl_message.H
 l 0000 root sys $includedir/FL/fl_show_colormap.h fl_show_colormap.H
 l 0000 root sys $includedir/FL/fl_show_input.h fl_show_input.H
+l 0000 root sys $includedir/FL/fl_utf8.h fl_utf8.H
 l 0000 root sys $includedir/FL/forms.h forms.H
 l 0000 root sys $includedir/FL/gl_draw.h gl_draw.H
 l 0000 root sys $includedir/FL/glut.h glut.H

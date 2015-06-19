@@ -440,7 +440,15 @@ class EditorWindow : public Fl_Double_Window {
 
     Fl_Text_Editor     *editor;
     char               search[256];
+
+    void resize(int X, int Y, int W, int H);
 };
+
+void EditorWindow::resize(int X, int Y, int W, int H)
+{
+	fl_set_status(25,  H - 25, W - 70, 25);
+	Fl_Double_Window::resize(X, Y, W, H);	
+}
 
 EditorWindow::EditorWindow(int w, int h, const char* t) : Fl_Double_Window(w, h, t) {
   replace_dlg = new Fl_Window(300, 105, "Replace");
@@ -462,6 +470,7 @@ EditorWindow::EditorWindow(int w, int h, const char* t) : Fl_Double_Window(w, h,
   replace_dlg->set_non_modal();
   editor = 0;
   *search = (char)0;
+  fl_set_status(25,  h - 25, w - 70, 25);
 }
 
 EditorWindow::~EditorWindow() {
@@ -782,6 +791,9 @@ int main(int argc, char **argv) {
   style_init();
 
   Fl_Window* window = new_view();
+
+  Fl::set_font(FL_COURIER, 
+   "-*-courier-medium-r-normal--*-iso8859-1, *-jisx0208.1983-*");
 
   window->show(1, argv);
 

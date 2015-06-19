@@ -25,6 +25,8 @@
 //     http://www.fltk.org/str.php
 //
 
+#include <stdio.h>
+
 Fl_FontSize::Fl_FontSize(const char* name, int size) {
   int weight = FW_NORMAL;
   int italic = 0;
@@ -56,9 +58,12 @@ Fl_FontSize::Fl_FontSize(const char* name, int size) {
   GetTextMetrics(fl_gc, &metr);
 //  BOOL ret = GetCharWidthFloat(fl_gc, metr.tmFirstChar, metr.tmLastChar, font->width+metr.tmFirstChar);
 // ...would be the right call, but is not implemented into Window95! (WinNT?)
-  GetCharWidth(fl_gc, 0, 255, width);
+  //GetCharWidth(fl_gc, 0, 255, width);
+  int i;
+  for (i = 0; i < 64; i++) width[i] = NULL;
 #if HAVE_GL
   listbase = 0;
+  for (i = 0; i < 64; i++) glok[i] = 0;
 #endif
   minsize = maxsize = size;
 }
@@ -79,6 +84,8 @@ Fl_FontSize::~Fl_FontSize() {
 #endif
   if (this == fl_fontsize) fl_fontsize = 0;
   DeleteObject(fid);
+  int i;
+  for (i = 0; i < 64; i++) free(width[i]);
 }
 
 ////////////////////////////////////////////////////////////////
@@ -145,27 +152,61 @@ int fl_descent() {
   else return -1;
 }
 
-double fl_width(const char* c, int n) {
-  if (!fl_fontsize) return -1.0;
-  double w = 0.0;
-  while (n--) w += fl_fontsize->width[uchar(*c++)];
-  return w;
+// Unicode string buffer
+static xchar *wstr = NULL;
+static int wstr_max    = 0;
+
+static int convert_to_unicode(const char* c, int n)
+{
+  if (n > wstr_max) {
+    wstr = (xchar*) realloc(wstr, sizeof(xchar) * n);
+    wstr_max = n;
+  }
+  return fl_utf2unicode((const unsigned char *)c, n, wstr);
 }
 
-double fl_width(uchar c) {
-  if (fl_fontsize) return fl_fontsize->width[c];
-  else return -1.0;
+double fl_width(const xchar* wc, int wn)
+{
+  SIZE size;
+  HDC dc = fl_gc ? fl_gc : GetDC(NULL);
+  HFONT old_font = (HFONT)SelectObject(dc, fl_fontsize->fid);
+  GetTextExtentPoint32W(dc, wc, wn, &size);
+  if (dc != fl_gc)
+  {
+    SelectObject(dc, old_font);
+    ReleaseDC(NULL, dc);
+  }
+  return (double)(size.cx);
+}
+
+double fl_width(const char* c, int n) {
+  int wn = convert_to_unicode(c, n);
+  return fl_width(wstr, wn);
+}
+
+double fl_width(unsigned int c) {
+  xchar wc = c;
+  return fl_width(&wc, 1);
 }
 
 void fl_draw(const char* str, int n, int x, int y) {
+  int wn = convert_to_unicode(str, n);
   COLORREF oldColor = SetTextColor(fl_gc, fl_RGB());
   if (fl_fontsize) SelectObject(fl_gc, fl_fontsize->fid);
-  TextOut(fl_gc, x, y, str, n);
+  TextOutW(fl_gc, x, y, wstr, wn);
   SetTextColor(fl_gc, oldColor);
 }
 
-void fl_draw(const char* str, int n, float x, float y) {
-  fl_draw(str, n, (int)x, (int)y);
+void fl_rtl_draw(const char* c, int n, int x, int y) {
+  int wn = convert_to_unicode(c, n);
+  COLORREF oldColor = SetTextColor(fl_gc, fl_RGB());
+  UINT oldAlign = GetTextAlign(fl_gc);
+  SetTextAlign(fl_gc, oldAlign | TA_RTLREADING);
+  if (fl_fontsize) SelectObject(fl_gc, fl_fontsize->fid);
+  SIZE size;  GetTextExtentPoint32W(fl_gc, (WCHAR *)wstr, wn, &size);
+  TextOutW(fl_gc, x - size.cx, y, wstr, wn);
+  SetTextColor(fl_gc, oldColor);
+  SetTextAlign(fl_gc, oldAlign);
 }
 
 //

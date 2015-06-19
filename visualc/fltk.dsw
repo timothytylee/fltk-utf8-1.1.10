@@ -84,21 +84,6 @@ Package=<4>
 
 ###############################################################################
 
-Project: "blocks"=".\blocks.dsp" - Package Owner=<4>
-
-Package=<5>
-{{{
-}}}
-
-Package=<4>
-{{{
-    Begin Project Dependency
-    Project_Dep_Name fltk
-    End Project Dependency
-}}}
-
-###############################################################################
-
 Project: "boxtype"=".\boxtype.dsp" - Package Owner=<4>
 
 Package=<5>
@@ -478,9 +463,6 @@ Package=<4>
     End Project Dependency
     Begin Project Dependency
     Project_Dep_Name sudoku
-    End Project Dependency
-    Begin Project Dependency
-    Project_Dep_Name blocks
     End Project Dependency
 }}}
 
@@ -1345,6 +1327,21 @@ Package=<4>
 {{{
     Begin Project Dependency
     Project_Dep_Name fltk
+    End Project Dependency
+}}}
+
+###############################################################################
+
+Project: "utf8"=".\utf8.dsp" - Package Owner=<4>
+
+Package=<5>
+{{{
+}}}
+
+Package=<4>
+{{{
+    Begin Project Dependency
+    Project_Dep_Name fltkdll
     End Project Dependency
 }}}
 

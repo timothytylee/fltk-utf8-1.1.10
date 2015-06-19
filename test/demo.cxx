@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <FL/fl_utf8.H>
+
 #if defined(WIN32) && !defined(__CYGWIN__)
 #  include <direct.h>
 #  ifndef __WATCOMC__
@@ -298,7 +300,7 @@ int load_the_menu(const char* fname)
   FILE *fin;
   char line[256], mname[64],iname[64],cname[64];
   int i,j;
-  fin = fopen(fname,"r");
+  fin = fl_fopen(fname,"r");
   if (fin == NULL)
   {
 //    fl_show_message("ERROR","","Cannot read the menu description file.");

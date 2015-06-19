@@ -30,7 +30,8 @@
 %define prefix /usr
 
 Summary: Fast Light Tool Kit (FLTK)
-Name: fltk
+Name: fltk-utf8
+Provides: fltk
 Version: %{version}
 Release: %{release}
 License: LGPL

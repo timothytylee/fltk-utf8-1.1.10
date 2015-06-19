@@ -29,6 +29,7 @@
 #include <FL/Fl.H>
 #include <FL/x.H>
 #include <FL/Fl_Window.H>
+#include <FL/fl_utf8.H>
 #include "flstring.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -203,9 +204,27 @@ private:
     // clear currDrag* for a new drag event
     clearCurrentDragData();
 
-    // fill currDrag* with ASCII data, if available
+    // fill currDrag* with Unicode text, if available
     FORMATETC fmt = { 0 };
     STGMEDIUM medium = { 0 };
+    fmt.tymed = TYMED_HGLOBAL;
+    fmt.dwAspect = DVASPECT_CONTENT;
+    fmt.lindex = -1;
+    fmt.cfFormat = CF_UNICODETEXT;
+    // if it is Unicode text, return a copy of it
+    if ( data->GetData( &fmt, &medium )==S_OK )
+    {
+      void *stuff = GlobalLock( medium.hGlobal );
+      int  wl = wcslen((WCHAR*)stuff);
+      Fl::e_text = (char*)malloc(wl * 5 + 1);
+      Fl::e_length = fl_unicode2utf((xchar*)stuff, wl, Fl::e_text);
+      GlobalUnlock( medium.hGlobal );
+      ReleaseStgMedium( &medium );
+      currDragResult = 1;
+      return currDragResult;
+    }
+    // else fill currDrag* with ASCII text, if available
+    memset(&fmt, 0, sizeof(fmt));
     fmt.tymed = TYMED_HGLOBAL;
     fmt.dwAspect = DVASPECT_CONTENT;
     fmt.lindex = -1;
@@ -214,8 +233,9 @@ private:
     if ( data->GetData( &fmt, &medium )==S_OK )
     {
       void *stuff = GlobalLock( medium.hGlobal );
-      Fl::e_length = strlen((char*)stuff);
-      Fl::e_text = strdup((char*)stuff);
+      int   l = strlen((char*)stuff);
+      Fl::e_text = strdup(fl_locale2utf8((char*)stuff, l, GetACP()));
+      Fl::e_length = strlen(Fl::e_text);
       GlobalUnlock( medium.hGlobal );
       ReleaseStgMedium( &medium );
       currDragResult = 1;
@@ -231,17 +251,39 @@ private:
     if ( data->GetData( &fmt, &medium )==S_OK )
     {
       HDROP hdrop = (HDROP)medium.hGlobal;
-      int i, n, nn = 0, nf = DragQueryFile( hdrop, (UINT)-1, 0, 0 );
-      for ( i=0; i<nf; i++ ) nn += DragQueryFile( hdrop, i, 0, 0 );
+      int i, n, nn = 0, nf;
+      if (fl_is_nt4()) {
+	nf = DragQueryFileW( hdrop, (UINT)-1, 0, 0 );
+	for ( i=0; i<nf; i++ ) nn += DragQueryFileW( hdrop, i, 0, 0 );
+	nn += nf;
+	WCHAR* dst = (WCHAR*)malloc(nn * sizeof(WCHAR));
+	WCHAR* bu = dst;
+	for ( i=0; i<nf; i++ ) {
+	  n = DragQueryFileW( hdrop, i, dst, nn );
+	  dst += n;
+	  if ( i<nf-1 ) *dst++ = L'\n';
+	}
+	*dst = 0;
+	Fl::e_text = (char*) malloc(nn * 5 + 1);
+	Fl::e_length = fl_unicode2utf((xchar*)bu, nn - 1, Fl::e_text);
+	Fl::e_text[Fl::e_length] = 0;
+	free(bu);
+      } else {
+        nf = DragQueryFileA( hdrop, (UINT)-1, 0, 0 );
+	for ( i=0; i<nf; i++ ) nn += DragQueryFileA( hdrop, i, 0, 0 );
       nn += nf;
-      Fl::e_length = nn-1;
       char *dst = Fl::e_text = (char*)malloc(nn+1);
       for ( i=0; i<nf; i++ ) {
-	n = DragQueryFile( hdrop, i, dst, nn );
+	  n = DragQueryFileA( hdrop, i, dst, nn );
 	dst += n;
 	if ( i<nf-1 ) *dst++ = '\n';
       }
       *dst = 0;
+	char* b = fl_locale2utf8(Fl::e_text, nn - 1, GetACP());
+        free( Fl::e_text );
+        Fl::e_text = strdup(b);
+	Fl::e_length = strlen(b);
+      }
       ReleaseStgMedium( &medium );
       currDragResult = 1;
       return currDragResult;
@@ -325,6 +367,21 @@ public:
   HRESULT STDMETHODCALLTYPE GetData( FORMATETC *pformatetcIn, STGMEDIUM *pmedium ) {
     if ((pformatetcIn->dwAspect & DVASPECT_CONTENT) &&
         (pformatetcIn->tymed & TYMED_HGLOBAL) &&
+        (pformatetcIn->cfFormat == CF_UNICODETEXT))
+    {
+      int l = fl_selection_length[0];
+      HGLOBAL gh = GlobalAlloc( GHND, (l + 1) * sizeof(WCHAR) );
+      WCHAR *pMem = (WCHAR*)GlobalLock( gh );
+      l = fl_utf2unicode((unsigned char*)fl_selection_buffer[0], l, (xchar*)pMem);
+      pMem[l] = 0;      
+      pmedium->tymed	      = TYMED_HGLOBAL;
+      pmedium->hGlobal	      = gh;
+      pmedium->pUnkForRelease = NULL;
+      GlobalUnlock( gh );
+      return S_OK;
+    }
+    if ((pformatetcIn->dwAspect & DVASPECT_CONTENT) &&
+        (pformatetcIn->tymed & TYMED_HGLOBAL) &&
         (pformatetcIn->cfFormat == CF_TEXT))
     {
       HGLOBAL gh = GlobalAlloc( GHND, fl_selection_length[0]+1 );
@@ -343,7 +400,7 @@ public:
   {
     if ((pformatetc->dwAspect & DVASPECT_CONTENT) &&
         (pformatetc->tymed & TYMED_HGLOBAL) &&
-        (pformatetc->cfFormat == CF_TEXT))
+        (pformatetc->cfFormat == CF_UNICODETEXT || pformatetc->cfFormat == CF_TEXT))
       return S_OK;
     return DV_E_FORMATETC;	
   }  

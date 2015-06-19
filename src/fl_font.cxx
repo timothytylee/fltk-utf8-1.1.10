@@ -29,6 +29,7 @@
 #include "flstring.h"
 #include <FL/Fl.H>
 #include <FL/fl_draw.H>
+#include <FL/fl_utf8.H>
 #include <FL/x.H>
 #include "Fl_Font.H"
 
@@ -54,6 +55,12 @@ double fl_width(const char* c) {
 void fl_draw(const char* str, int x, int y) {
   fl_draw(str, strlen(str), x, y);
 }
+
+#ifndef __APPLE__
+void fl_draw(const char* str, int l, float x, float y) {
+  fl_draw(str, l, (int)x, (int)y);
+}
+#endif
 
 //
 // End of "$Id: fl_font.cxx 5190 2006-06-09 16:16:34Z mike $".

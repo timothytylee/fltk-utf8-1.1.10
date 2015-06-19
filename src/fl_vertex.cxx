@@ -42,13 +42,15 @@ struct matrix {double a, b, c, d, x, y;};
 
 static matrix m = {1, 0, 0, 1, 0, 0};
 
-static matrix stack[32];
+static matrix* stack = NULL;
 static int sptr = 0;
+static int smalloc = 0;
 
 void fl_push_matrix() {
-  if (sptr==32)
-    Fl::error("fl_push_matrix(): matrix stack overflow.");
-  else
+  if (smalloc <= sptr) {
+    smalloc = smalloc ? (smalloc * 2) : 32;
+    stack = (matrix*)realloc(stack, sizeof(matrix) * smalloc);
+  }
     stack[sptr++] = m;
 }
 

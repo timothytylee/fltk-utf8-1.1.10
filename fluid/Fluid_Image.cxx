@@ -27,6 +27,7 @@
 
 #include <FL/Fl.H>
 #include <FL/Fl_Widget.H>
+#include <FL/fl_utf8.H>
 #include "Fl_Type.h"
 #include "Fluid_Image.h"
 #include "../src/flstring.h"
@@ -148,7 +149,7 @@ Fluid_Image* Fluid_Image::find(const char *iname) {
   // no, so now see if the file exists:
 
   goto_source_dir();
-  FILE *f = fopen(iname,"rb");
+  FILE *f = fl_fopen(iname,"rb");
   if (!f) {
     read_error("%s : %s",iname,strerror(errno));
     leave_source_dir();

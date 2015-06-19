@@ -31,6 +31,7 @@
 #include <stdarg.h>
 
 #include <FL/Fl.H>
+#include <FL/fl_utf8.H>
 #include "Fl_Type.h"
 #include "alignment_panel.h"
 
@@ -180,7 +181,7 @@ void write_cstring(const char *w, int length) {
     case '\'':
     case '\\':
     QUOTED:
-      if (linelength >= 77) {fputs("\\\n",code_file); linelength = 0;}
+      if (linelength >= 77) {fputs("\"\n\"",code_file); linelength = 0;}
       putc('\\', code_file);
       putc(c, code_file);
       linelength += 2;
@@ -191,7 +192,7 @@ void write_cstring(const char *w, int length) {
     default:
       if (c >= ' ' && c < 127) {
 	// a legal ASCII character
-	if (linelength >= 78) {fputs("\\\n",code_file); linelength = 0;}
+	if (linelength >= 78) {fputs("\"\n\"",code_file); linelength = 0;}
 	putc(c, code_file);
 	linelength++;
 	break;
@@ -199,15 +200,15 @@ void write_cstring(const char *w, int length) {
       // otherwise we must print it as an octal constant:
       c &= 255;
       if (c < 8) {
-	if (linelength >= 76) {fputs("\\\n",code_file); linelength = 0;}
+	if (linelength >= 76) {fputs("\"\n\"",code_file); linelength = 0;}
 	fprintf(code_file, "\\%o",c);
 	linelength += 2;
       } else if (c < 64) {
-	if (linelength >= 75) {fputs("\\\n",code_file); linelength = 0;}
+	if (linelength >= 75) {fputs("\"\n\"",code_file); linelength = 0;}
 	fprintf(code_file, "\\%o",c);
 	linelength += 3;
       } else {
-	if (linelength >= 74) {fputs("\\\n",code_file); linelength = 0;}
+	if (linelength >= 74) {fputs("\"\n\"",code_file); linelength = 0;}
 	fprintf(code_file, "\\%o",c);
 	linelength += 4;
       }
@@ -343,13 +344,13 @@ int write_code(const char *s, const char *t) {
   current_widget_class = 0L;
   if (!s) code_file = stdout;
   else {
-    FILE *f = fopen(s, filemode);
+    FILE *f = fl_fopen(s, filemode);
     if (!f) return 0;
     code_file = f;
   }
   if (!t) header_file = stdout;
   else {
-    FILE *f = fopen(t, filemode);
+    FILE *f = fl_fopen(t, filemode);
     if (!f) {fclose(code_file); return 0;}
     header_file = f;
   }
@@ -457,7 +458,7 @@ int write_code(const char *s, const char *t) {
 }
 
 int write_strings(const char *sfile) {
-  FILE *fp = fopen(sfile, "w");
+  FILE *fp = fl_fopen(sfile, "w");
   Fl_Type *p;
   Fl_Widget_Type *w;
   int i;

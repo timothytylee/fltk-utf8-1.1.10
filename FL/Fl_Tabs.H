@@ -34,7 +34,7 @@ class FL_EXPORT Fl_Tabs : public Fl_Group {
   Fl_Widget *value_;
   Fl_Widget *push_;
   int tab_positions(int*, int*);
-  int tab_height();
+  int tab_height_;
   void draw_tab(int x1, int x2, int W, int H, Fl_Widget* o, int sel=0);
 protected:
   void redraw_tabs();
@@ -48,6 +48,8 @@ public:
   int push(Fl_Widget *);
   Fl_Tabs(int,int,int,int,const char * = 0);
   Fl_Widget *which(int event_x, int event_y);
+  int tab_height();
+  void tab_height(int h);
 };
 
 #endif

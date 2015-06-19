@@ -80,7 +80,11 @@ void Fl_Window::fullscreen() {
   resize(sx, sy, sw, sh);
 #else
   if (!x()) x(1); // force it to call XResizeWindow()
+#ifdef WIN32
+  resize(0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics(SM_CYSCREEN));
+#else
   resize(0,0,Fl::w(),Fl::h());
+#endif
 #endif
 }
 

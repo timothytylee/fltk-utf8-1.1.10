@@ -42,6 +42,25 @@
 
 #  if USE_XFT
 typedef struct _XftFont XftFont;
+typedef struct _XftMatch
+{
+  XftFont*    font;
+  const char* enc_str;		// Encoding name
+  const char* lang_str;		// FontConfig language name
+  int         enc_num;		// XUTF8 encoding number
+  int         ascent;
+  int         descent;
+  int         offset;		// Adjustment from baseline
+} XftMatch;
+typedef struct _XftFontList
+{
+  XftMatch* matches;
+  int       count;
+  int       ascent;
+  int       descent;
+} XftFontList;
+#  elif !defined(WIN32) && !defined(__APPLE__)
+#    include <FL/Xutf8.h>
 #  endif // USE_XFT
 
 class Fl_FontSize {
@@ -49,7 +68,7 @@ public:
   Fl_FontSize *next;	// linked list for this Fl_Fontdesc
 #  ifdef WIN32
   HFONT fid;
-  int width[256];
+  int *width[64];
   TEXTMETRIC metr;
   FL_EXPORT Fl_FontSize(const char* fontname, int size);
 #  elif defined(__APPLE_QD__)
@@ -68,18 +87,18 @@ public:
   char *q_name;
   int size;
 #  elif USE_XFT
-  XftFont* font;
-  const char* encoding;
+  XftFontList* font;
   int size;
   FL_EXPORT Fl_FontSize(const char* xfontname);
 #  else
-  XFontStruct* font;	// X font information
+  XUtf8FontStruct* font;	// X UTF-8 font information
   FL_EXPORT Fl_FontSize(const char* xfontname);
 #  endif
   int minsize;		// smallest point size that should use this
   int maxsize;		// largest point size that should use this
 #  if HAVE_GL
   unsigned int listbase;// base of display list, 0 = none
+  char glok[64];
 #  endif
   FL_EXPORT ~Fl_FontSize();
 };

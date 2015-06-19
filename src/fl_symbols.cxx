@@ -646,7 +646,7 @@ static void draw_redo(Fl_Color c) {
 }
 
 static void fl_init_symbols(void) {
-  static char beenhere;
+  static char beenhere = 0;
   if (beenhere) return;
   beenhere = 1;
   symbnumb = 0;

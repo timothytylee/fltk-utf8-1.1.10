@@ -60,7 +60,7 @@ void fl_curve(double X0, double Y0,
   // use that to guess at the number of segments:
   int n = int(sqrt(a)/4);
   if (n > 1) {
-    if (n > 100) n = 100; // make huge curves not hang forever
+    if (n > 1000) n = 1000; // make huge curves not hang forever
 
     double e = 1.0/n;
 

@@ -27,6 +27,9 @@
 
 #include <config.h>
 
+// if no font has been selected yet by the user, get one.
+#define check_default_font() {if (!fl_fontsize) fl_font(0, 12);}
+
 Fl_FontSize::Fl_FontSize(const char* name, int Size) {
   next = 0;
 #  if HAVE_GL
@@ -51,7 +54,6 @@ Fl_FontSize::Fl_FontSize(const char* name, int Size) {
   for (int i=0; i<256; i++) width[i] = fOut->widMax;
   minsize = maxsize = size;
 #elif defined(__APPLE_QUARTZ__)
-  knowWidths = 0;
     // OpenGL needs those for its font handling
   q_name = strdup(name);
   size = Size;
@@ -62,7 +64,8 @@ Fl_FontSize::Fl_FontSize(const char* name, int Size) {
   q_width = Size*2/3;
   minsize = maxsize = Size;
     // now use ATS to get the actual Glyph size information
-  CFStringRef cfname = CFStringCreateWithCString(0L, name, kCFStringEncodingASCII);
+    // say that our passed-in name is encoded as UTF-8, since this works for plain ASCII names too...
+  CFStringRef cfname = CFStringCreateWithCString(0L, name, kCFStringEncodingUTF8);
   ATSFontRef font = ATSFontFindFromName(cfname, kATSOptionFlagsDefault);
   if (font) {
     ATSFontMetrics m = { 0 };
@@ -84,7 +87,10 @@ Fl_FontSize::Fl_FontSize(const char* name, int Size) {
     // render our font up-side-down, so when rendered through our inverted CGContext,
     // text will appear normal again.
   Fixed fsize = IntToFixed(Size);
-  ATSUFontID fontID = FMGetFontFromATSFontRef(font);
+  ATSUFontID fontID;
+  ATSUFindFontFromName(name, strlen(name), kFontFullName, kFontMacintoshPlatform, kFontRomanScript, kFontEnglishLanguage, &fontID);
+
+  // draw the font upside-down... Compensate for fltk/OSX origin differences
   static CGAffineTransform font_mx = { 1, 0, 0, -1, 0, 0 };
   ATSUAttributeTag sTag[] = { kATSUFontTag, kATSUSizeTag, kATSUFontMatrixTag };
   ByteCount sBytes[] = { sizeof(ATSUFontID), sizeof(Fixed), sizeof(CGAffineTransform) };
@@ -111,6 +117,14 @@ Fl_FontSize::Fl_FontSize(const char* name, int Size) {
   int w = FixedToInt(bAfter);
   if (w)  
     q_width = FixedToInt(bAfter);
+
+# define ENABLE_TRANSIENT_FONTS  1
+
+# ifdef ENABLE_TRANSIENT_FONTS
+  // Now, by way of experiment, try enabling Transient Font Matching, this will
+  // cause ATSU to find a suitable font to render any chars the current font can't do...
+  ATSUSetTransientFontMatching (layout, true);
+# endif
 #endif
 }
 
@@ -179,42 +193,23 @@ static Fl_Fontdesc built_in_table[] = {
 };
 
 #ifdef __APPLE_QUARTZ__
-static UniChar utf16lut[128] = {
-  0x00c4, 0x00c5, 0x00c7, 0x00c9, 0x00d1, 0x00d6, 0x00dc, 0x00e1, 
-  0x00e0, 0x00e2, 0x00e4, 0x00e3, 0x00e5, 0x00e7, 0x00e9, 0x00e8, 
-  0x00ea, 0x00eb, 0x00ed, 0x00ec, 0x00ee, 0x00ef, 0x00f1, 0x00f3, 
-  0x00f2, 0x00f4, 0x00f6, 0x00f5, 0x00fa, 0x00f9, 0x00fb, 0x00fc, 
-  0x2020, 0x00b0, 0x00a2, 0x00a3, 0x00a7, 0x2022, 0x00b6, 0x00df, 
-  0x00ae, 0x00a9, 0x2122, 0x00b4, 0x00a8, 0x2260, 0x00c6, 0x00d8, 
-  0x221e, 0x00b1, 0x2264, 0x2265, 0x00a5, 0x00b5, 0x2202, 0x2211, 
-  0x220f, 0x03c0, 0x222b, 0x00aa, 0x00ba, 0x03a9, 0x00e6, 0x00f8, 
-  0x00bf, 0x00a1, 0x00ac, 0x221a, 0x0192, 0x2248, 0x2206, 0x00ab, 
-  0x00bb, 0x2026, 0x00a0, 0x00c0, 0x00c3, 0x00d5, 0x0152, 0x0153, 
-  0x2013, 0x2014, 0x201c, 0x201d, 0x2018, 0x2019, 0x00f7, 0x25ca, 
-  0x00ff, 0x0178, 0x2044, 0x20ac, 0x2039, 0x203a, 0xfb01, 0xfb02, 
-  0x2021, 0x00b7, 0x201a, 0x201e, 0x2030, 0x00c2, 0x00ca, 0x00c1, 
-  0x00cb, 0x00c8, 0x00cd, 0x00ce, 0x00cf, 0x00cc, 0x00d3, 0x00d4, 
-  0xf8ff, 0x00d2, 0x00da, 0x00db, 0x00d9, 0x0131, 0x02c6, 0x02dc, 
-  0x00af, 0x02d8, 0x02d9, 0x02da, 0x00b8, 0x02dd, 0x02db, 0x02c7, 
-};
 static UniChar *utf16buf = 0;
 static int utf16len = 0;
-UniChar *fl_macToUtf16(const char *txt, int len)
+UniChar *fl_macToUtf16(const char *txt, int len, int *new_len)
 {
-  if ((len+1)>utf16len) {
-    utf16len = len+100;
+  wchar_t *wbuf = (wchar_t*)malloc(sizeof(wchar_t) *(len + 10));
+  *new_len = fl_utf2unicode((const unsigned char*)txt, len, wbuf);
+  if ((1 + *new_len) > utf16len) {
+    utf16len = 100 + *new_len;
     free(utf16buf);
     utf16buf = (UniChar*)malloc((utf16len+1)*sizeof(UniChar));
   }
   int i;
-  unsigned char c;
-  const unsigned char *src = (unsigned char const*)txt;
+  wchar_t *src = (wchar_t*)wbuf;
   UniChar *dst = utf16buf;
-  for (i=0; i<len; i++) {
-    c = *src++;
-    *dst++ =(c<128) ? c : utf16lut[c-128];
-  }
+  for (i = *new_len;  i--;  ) *dst++ = *src++;
   *dst = 0;
+  free(wbuf);
   return utf16buf;
 }
 #endif
@@ -275,68 +270,64 @@ void fl_font(int fnum, int size) {
 }
 
 int fl_height() {
+  check_default_font();
   if (fl_fontsize) return fl_fontsize->ascent+fl_fontsize->descent;
   else return -1;
 }
 
 int fl_descent() {
+  check_default_font();
   if (fl_fontsize) return fl_fontsize->descent;
   else return -1;
 }
 
-double fl_width(const char* txt, int n) {
-#ifdef __APPLE_QD__
-  return (double)TextWidth( txt, 0, n );
-#else
+double fl_width(const UniChar* txt, int n) {
+  check_default_font();
   if (!fl_fontsize) {
-    fl_font(0, 12); // avoid a crash!
+    check_default_font(); // avoid a crash!
     if (!fl_fontsize)
       return 8*n; // user must select a font first!
   }
-  if (!fl_fontsize->knowWidths) {
-    if (!fl_gc) {
-      Fl_Window *w = Fl::first_window();
-      if (w) w->make_current();
-      if (!fl_gc) {
-        if (fl_fontsize) return fl_fontsize->q_width*n;
-        return 8*n;
-        // We fall back to some internal QuickDraw port.
-        // The result should be the same.
-      }
-    }
-    char buf[2];
-    for (int i=0; i<256; i++) {
+
       OSStatus err;
-      buf[0] = (char)i;
-        // convert to UTF-16 first
-      UniChar *uniStr = fl_macToUtf16(buf, 1);
-        // now collect our ATSU resources
-      ATSUTextLayout layout = fl_fontsize->layout;
+  Fixed bBefore, bAfter, bAscent, bDescent;
+  ATSUTextLayout layout;
+  ByteCount iSize;
+  ATSUAttributeTag iTag;
+  ATSUAttributeValuePtr iValuePtr;
+
+// Here's my ATSU text measuring attempt... This seems to do the Right Thing
+  // now collect our ATSU resources and measure our text string
+  layout = fl_fontsize->layout;
         // activate the current GC
-      ByteCount iSize = sizeof(CGContextRef);
-      ATSUAttributeTag iTag = kATSUCGContextTag;
-      ATSUAttributeValuePtr iValuePtr=&fl_gc;
+  iSize = sizeof(CGContextRef);
+  iTag = kATSUCGContextTag;
+  iValuePtr = &fl_gc;
       ATSUSetLayoutControls(layout, 1, &iTag, &iSize, &iValuePtr);
         // now measure the bounding box
-      err = ATSUSetTextPointerLocation(layout, uniStr, kATSUFromTextBeginning, 1, 1);
-      Fixed bBefore, bAfter, bAscent, bDescent;
-      err = ATSUGetUnjustifiedBounds(layout, kATSUFromTextBeginning, 1, &bBefore, &bAfter, &bAscent, &bDescent);
-      fl_fontsize->width[i] = FixedToInt(bAfter);
-    }
-    fl_fontsize->knowWidths = 1;
-  }
-  int len = 0;
-  const char *src = txt;
-  for (int j=0; j<n; j++) {
-    unsigned char c = *src++;
-    len += fl_fontsize->width[c];
-  }
+  err = ATSUSetTextPointerLocation(layout, txt, kATSUFromTextBeginning, n, n);
+  err = ATSUGetUnjustifiedBounds(layout, kATSUFromTextBeginning, n, &bBefore, &bAfter, &bAscent, &bDescent);
+  // If err is OK then return length, else return 0. Or something...
+  int len = FixedToInt(bAfter);
   return len;
+}
+
+double fl_width(const char* txt, int n) {
+#ifdef __APPLE_QD__
+  return (double)TextWidth(txt, 0, n);
+#else
+  int wc_len = n;
+  UniChar *uniStr = fl_macToUtf16(txt, n, &wc_len);
+  return fl_width(uniStr, wc_len);
 #endif
 }
 
 double fl_width(uchar c) {
   return fl_width((const char*)(&c), 1);
+}
+
+double fl_width(unsigned int wc) {
+  return fl_width((const UniChar*)(&wc), 1);
 }
 
 void fl_draw(const char *str, int n, float x, float y);
@@ -358,7 +349,10 @@ void fl_draw(const char *str, int n, float x, float y) {
 #elif defined(__APPLE_QUARTZ__)
   OSStatus err;
     // convert to UTF-16 first 
-  UniChar *uniStr = fl_macToUtf16(str, n);
+  UniChar *uniStr = fl_macToUtf16(str, n, &n);
+
+  // avoid a crash if no font has been selected by user yet !
+  check_default_font();
     // now collect our ATSU resources
   ATSUTextLayout layout = fl_fontsize->layout;
 
@@ -372,6 +366,9 @@ void fl_draw(const char *str, int n, float x, float y) {
 #else
 #  error : neither Quartz no Quickdraw chosen
 #endif
+}
+
+void fl_rtl_draw(const char *str, int n, int x, int y) {
 }
 
 //

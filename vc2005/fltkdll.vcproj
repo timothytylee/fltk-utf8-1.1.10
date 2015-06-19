@@ -74,7 +74,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="opengl32.lib wsock32.lib comctl32.lib"
+				AdditionalDependencies="opengl32.lib wsock32.lib comctl32.lib imm32.lib"
 				OutputFile="fltkdll.dll"
 				Version="1.0"
 				LinkIncremental="1"
@@ -167,7 +167,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="opengl32.lib wsock32.lib comctl32.lib"
+				AdditionalDependencies="opengl32.lib wsock32.lib comctl32.lib imm32.lib"
 				OutputFile="fltkdlld.dll"
 				Version="1.0"
 				LinkIncremental="1"
@@ -2911,6 +2911,29 @@
 			</FileConfiguration>
 		</File>
 		<File
+			RelativePath="..\src\fl_utf8.cxx"
+			>
+			<FileConfiguration
+				Name="Release|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Debug|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					Optimization="0"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;_DEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
 			RelativePath="..\src\Fl_Valuator.cxx"
 			>
 			<FileConfiguration
@@ -3595,6 +3618,98 @@
 		</File>
 		<File
 			RelativePath="..\src\vsnprintf.c"
+			>
+			<FileConfiguration
+				Name="Release|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Debug|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					Optimization="0"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;_DEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
+			RelativePath="..\xutf8\case.c"
+			>
+			<FileConfiguration
+				Name="Release|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Debug|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					Optimization="0"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;_DEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
+			RelativePath="..\xutf8\is_right2left.c"
+			>
+			<FileConfiguration
+				Name="Release|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Debug|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					Optimization="0"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;_DEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
+			RelativePath="..\xutf8\is_spacing.c"
+			>
+			<FileConfiguration
+				Name="Release|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Debug|Win32"
+				>
+				<Tool
+					Name="VCCLCompilerTool"
+					Optimization="0"
+					AdditionalIncludeDirectories=""
+					PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;FL_DLL;FL_LIBRARY;WIN32;_DEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;VC_EXTRA_LEAN;WIN32_EXTRA_LEAN;$(NoInherit)"
+				/>
+			</FileConfiguration>
+		</File>
+		<File
+			RelativePath="..\xutf8\utf8Utils.c"
 			>
 			<FileConfiguration
 				Name="Release|Win32"

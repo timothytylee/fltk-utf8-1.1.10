@@ -521,6 +521,13 @@ esac
 
 AC_SUBST(AUDIOLIBS)
 
+HAVE_LIBC_ICONV=0
+AC_CHECK_LIB(c, iconv, 
+	AC_DEFINE(HAVE_LIBC_ICONV)
+        HAVE_LIBC_ICONV=1 
+        )
+AC_SUBST(HAVE_LIBC_ICONV)
+
 dnl Check for image libraries...
 SAVELIBS="$LIBS"
 IMAGELIBS=""
@@ -718,7 +725,7 @@ case $uname in
 	CXXFLAGS="-mwindows -DWIN32 $CXXFLAGS"
 	LDFLAGS="-mwindows $LDFLAGS"
 	DSOFLAGS="-mwindows $DSOFLAGS"
-	LIBS="$LIBS -lole32 -luuid -lcomctl32 -lwsock32"
+	LIBS="$LIBS -lole32 -luuid -lcomctl32 -lwsock32 -limm32"
 	if test "x$with_optim" = x; then
 	    dnl Avoid -Os optimization on Cygwin/Mingw
 	    with_optim="-O3"
@@ -874,7 +881,7 @@ case $uname in
 		AC_CHECK_HEADER(X11/Xft/Xft.h,
 		    AC_CHECK_LIB(Xft, XftDrawCreate,
 	        	AC_DEFINE(USE_XFT)
-			LIBS="-lXft $LIBS"))
+			LIBS="-lXft -lfontconfig $LIBS"))
 	    fi
 	fi
 

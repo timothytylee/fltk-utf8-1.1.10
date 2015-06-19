@@ -51,6 +51,7 @@
 #  include <windows.h>
 #  include <stdio.h>
 #  include <stdlib.h>
+#include <FL/fl_utf8.H>
 
 #  ifdef __MWERKS__
 #   include <crtl.h>
@@ -63,9 +64,21 @@ extern int main(int, char *[]);
 #    define __argv _argv
 #  endif /* BORLAND5 */
 
+static int mbcs2utf(const char *s, int l, char *buf)
+{
+  static xchar *mbwbuf;
+  if (!s) return 0;
+  mbwbuf = (xchar*)malloc((l * 6 +6) * sizeof(xchar));
+  l = mbstowcs(mbwbuf, s, l);
+  l = fl_unicode2utf(mbwbuf, l, buf);
+  free(mbwbuf);
+  return l;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                              LPSTR lpCmdLine, int nCmdShow) {
-  int rc;
+  int rc, i;
+  char **ar;
 
 #  ifdef _DEBUG
  /*
@@ -84,8 +97,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
   freopen("conout$", "w", stderr);
 #  endif /* _DEBUG */
 
+  ar = (char**) malloc(sizeof(char*) * (__argc + 1));
+  i = 0;
+  while (i < __argc) {
+    int l;
+    if (__wargv && fl_is_nt4()) {
+      for (l = 0; __wargv[i] && __wargv[i][l]; l++) {};
+      ar[i] = (char*) malloc((l * 5) + 1);
+      ar[i][fl_unicode2utf(__wargv[i], l, ar[i])] = 0;
+    } else {
+      for (l = 0; __argv[i] && __argv[i][l]; l++) {};
+      ar[i] = (char*) malloc((l * 5) + 1);
+      ar[i][mbcs2utf(__argv[i], l, ar[i])] = 0;
+    }
+    i++;
+  }
+  ar[__argc] = 0;
+
   /* Run the standard main entry point function... */
-  rc = main(__argc, __argv);
+  rc = main(__argc, ar);
 
 #  ifdef _DEBUG
   fclose(stdin);

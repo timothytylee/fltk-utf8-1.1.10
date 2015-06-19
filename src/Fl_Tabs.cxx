@@ -97,6 +97,7 @@ int Fl_Tabs::tab_height() {
   int H = h();
   int H2 = y();
   Fl_Widget*const* a = array();
+  if (tab_height_ > -1) return tab_height_;
   for (int i=children(); i--;) {
     Fl_Widget* o = *a++;
     if (o->y() < y()+H) H = o->y()-y();
@@ -105,6 +106,10 @@ int Fl_Tabs::tab_height() {
   H2 = y()+h()-H2;
   if (H2 > H) return (H2 <= 0) ? 0 : -H2;
   else return (H <= 0) ? 0 : H;
+}
+
+void Fl_Tabs::tab_height(int h) {
+  tab_height_ = h;
 }
 
 // this is used by fluid to pick tabs:
@@ -396,6 +401,7 @@ Fl_Tabs::Fl_Tabs(int X,int Y,int W, int H, const char *l) :
 {
   box(FL_THIN_UP_BOX);
   push_ = 0;
+  tab_height_ = -1;
 }
 
 //

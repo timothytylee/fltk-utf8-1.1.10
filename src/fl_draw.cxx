@@ -33,6 +33,8 @@
 // Aligns them against the inside of the box.
 
 #define min(a,b) ((a)<(b)?(a):(b))
+#include <FL/fl_utf8.H>
+#include <FL/Fl.H>
 #include <FL/fl_draw.H>
 #include <FL/Fl_Image.H>
 
@@ -53,11 +55,11 @@ static char* underline_at;
 // Sets n to the number of characters put into the buffer.
 // Sets width to the width of the string in the current font.
 
-static const char*
-expand(const char* from, char* buf, double maxw, int& n, double &width,
-       int wrap, int draw_symbols) {
+const char*
+fl_expand_text(const char* from, char* buf, int maxbuf, double maxw, int& n, 
+	double &width, int wrap, int draw_symbols) {
   char* o = buf;
-  char* e = buf+(MAXBUF-4);
+  char* e = buf+(maxbuf-4);
   underline_at = 0;
   char* word_end = o;
   const char* word_start = from;
@@ -88,19 +90,15 @@ expand(const char* from, char* buf, double maxw, int& n, double &width,
     if (o > e) break; // don't overflow buffer
 
     if (c == '\t') {
-      for (c = (o-buf)%8; c<8 && o<e; c++) *o++ = ' ';
+      for (c = fl_utf_nb_char((uchar*)buf, o-buf)%8; c<8 && o<e; c++) {
+        *o++ = ' ';
+      }
     } else if (c == '&' && fl_draw_shortcut && *(p+1)) {
       if (*(p+1) == '&') {p++; *o++ = '&';}
       else if (fl_draw_shortcut != 2) underline_at = o;
     } else if (c < ' ' || c == 127) { // ^X
       *o++ = '^';
       *o++ = c ^ 0x40;
-#ifdef __APPLE__
-    } else if (c == 0xCA) { // non-breaking space in MacRoman
-#else
-    } else if (c == 0xA0) { // non-breaking space in ISO 8859
-#endif
-      *o++ = ' ';
     } else if (c == '@' && draw_symbols) { // Symbol???
       if (p[1] && p[1] != '@')  break;
       *o++ = c;
@@ -159,7 +157,7 @@ void fl_draw(
   symtotal = symwidth[0] + symwidth[1];
 
   for (p = str, lines=0; p;) {
-    e = expand(p, buf, w - symtotal, buflen, width, align&FL_ALIGN_WRAP,
+    e = fl_expand_text(p, buf, MAXBUF, w - symtotal, buflen, width, align&FL_ALIGN_WRAP,
                draw_symbols);
     lines++;
     if (!*e || (*e == '@' && e[1] != '@' && draw_symbols)) break;
@@ -201,8 +199,8 @@ void fl_draw(
   if (str) {
     int desc = fl_descent();
     for (p=str; ; ypos += height) {
-      if (lines>1) e = expand(p, buf, w - symtotal, buflen, width,
-                              align&FL_ALIGN_WRAP, draw_symbols);
+      if (lines>1) e = fl_expand_text(p, buf, MAXBUF, w - symtotal, buflen, 
+				width, align&FL_ALIGN_WRAP, draw_symbols);
       else e = "";
 
       if (width > symoffset) symoffset = (int)(width + 0.5);
@@ -216,7 +214,7 @@ void fl_draw(
       if (underline_at && underline_at >= buf && underline_at < (buf + buflen))
 	callthis("_",1,xpos+int(fl_width(buf,underline_at-buf)),ypos-desc);
 
-      if (!*e || (*e == '@' && e[1] != '@')) break;
+      if (!*e || (*e == '@' && e[1] != '@' && draw_symbols)) break;
       p = e;
     }
   }
@@ -313,7 +311,8 @@ void fl_measure(const char* str, int& w, int& h, int draw_symbols) {
   symtotal = symwidth[0] + symwidth[1];
   
   for (p = str, lines=0; p;) {
-    e = expand(p, buf, w - symtotal, buflen, width, w != 0, draw_symbols);
+    e = fl_expand_text(p, buf, MAXBUF, w - symtotal, buflen, width,
+			w != 0, draw_symbols);
     if ((int)ceil(width) > W) W = (int)ceil(width);
     lines++;
     if (!*e || (*e == '@' && draw_symbols)) break;

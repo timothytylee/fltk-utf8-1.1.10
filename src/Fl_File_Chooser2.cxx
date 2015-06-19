@@ -54,6 +54,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <FL/fl_utf8.H>
 #include "flstring.h"
 #include <errno.h>
 #include <sys/types.h>
@@ -240,7 +241,7 @@ Fl_File_Chooser::favoritesButtonCB()
 
   if (!v) {
     // Add current directory to favorites...
-    if (getenv("HOME")) v = favoritesButton->size() - 5;
+    if (fl_getenv("HOME")) v = favoritesButton->size() - 5;
     else v = favoritesButton->size() - 4;
 
     sprintf(menuname, "favorite%02d", v);
@@ -556,7 +557,7 @@ Fl_File_Chooser::fileNameCB()
 	compare_dirnames(pathname, directory_)) {
 #endif /* WIN32 || __EMX__ */
       directory(pathname);
-    } else if ((type_ & CREATE) || access(pathname, 0) == 0) {
+    } else if ((type_ & CREATE) || fl_access(pathname, 0) == 0) {
       if (!_fl_filename_isdir_quick(pathname) || (type_ & DIRECTORY)) {
 	// Update the preview box...
 	update_preview();
@@ -677,7 +678,7 @@ Fl_File_Chooser::fileNameCB()
     }
 
     // See if we need to enable the OK button...
-    if (((type_ & CREATE) || !access(fileName->value(), 0)) &&
+    if (((type_ & CREATE) || !fl_access(fileName->value(), 0)) &&
         (!fl_filename_isdir(fileName->value()) || (type_ & DIRECTORY))) {
       okButton->activate();
     } else {
@@ -687,7 +688,7 @@ Fl_File_Chooser::fileNameCB()
     // FL_Delete or FL_BackSpace
     fileList->deselect(0);
     fileList->redraw();
-    if (((type_ & CREATE) || !access(fileName->value(), 0)) &&
+    if (((type_ & CREATE) || !fl_access(fileName->value(), 0)) &&
         (!fl_filename_isdir(fileName->value()) || (type_ & DIRECTORY))) {
       okButton->activate();
     } else {
@@ -772,14 +773,16 @@ Fl_File_Chooser::newdir()
 
   // Create the directory; ignore EEXIST errors...
 #if defined(WIN32) && ! defined (__CYGWIN__)
-  if (mkdir(pathname))
+  if (fl_mkdir(pathname, 0777))
 #else
-  if (mkdir(pathname, 0777))
+  if (fl_mkdir(pathname, 0777))
 #endif /* WIN32 */
     if (errno != EEXIST)
     {
+      if (fl_access(pathname, 0)) {
       fl_alert("%s", strerror(errno));
       return;
+    }
     }
 
   // Show the new directory...
@@ -971,7 +974,7 @@ Fl_File_Chooser::update_favorites()
   favoritesButton->add(manage_favorites_label, FL_ALT + 'm', 0, 0, FL_MENU_DIVIDER);
   favoritesButton->add(filesystems_label, FL_ALT + 'f', 0);
     
-  if ((home = getenv("HOME")) != NULL) {
+  if ((home = fl_getenv("HOME")) != NULL) {
     quote_pathname(menuname, home, sizeof(menuname));
     favoritesButton->add(menuname, FL_ALT + 'h', 0);
   }
@@ -1031,7 +1034,7 @@ Fl_File_Chooser::update_preview()
     int		bytes;
     char	*ptr;
 
-    if (filename) fp = fopen(filename, "rb");
+    if (filename) fp = fl_fopen(filename, "rb");
     else fp = NULL;
 
     if (fp != NULL) {
@@ -1074,6 +1077,7 @@ Fl_File_Chooser::update_preview()
     pbw = previewBox->w() - 20;
     pbh = previewBox->h() - 20;
 
+    if (image->w() < 1 || image->h() < 1) return;
     if (image->w() > pbw || image->h() > pbh) {
       w   = pbw;
       h   = w * image->h() / image->w();

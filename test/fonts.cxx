@@ -29,6 +29,7 @@
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Hold_Browser.H>
 #include <FL/fl_draw.H>
+#include <FL/fl_utf8.H>
 #include <FL/Fl_Box.H>
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,21 +103,23 @@ void size_cb(Fl_Widget *, long) {
   textobj->redraw();
 }
 
-char label[400];
+char label[0x1000];
 
 void create_the_forms() {
+  int n = 0;
   form = new Fl_Window(550,370);
 
   strcpy(label, "Hello, world!\n");
   int i = strlen(label);
-  uchar c;
+  ulong c;
   for (c = ' '+1; c < 127; c++) {
     if (!(c&0x1f)) label[i++]='\n'; 
     if (c=='@') label[i++]=c;
     label[i++]=c;
   }
   label[i++] = '\n';
-  for (c = 0xA1; c; c++) {if (!(c&0x1f)) label[i++]='\n'; label[i++]=c;}
+  for (c = 0xA1; c < 0x600; c += 9) {if (!(++n&(0x1f))) label[i++]='\n'; 
+                          i += fl_ucs2utf((unsigned int)c, label + i);}
   label[i] = 0;
 
   textobj = new FontDisplay(FL_FRAME_BOX,10,10,530,170,label);
@@ -153,13 +156,12 @@ int main(int argc, char **argv) {
     int t; const char *name = Fl::get_font_name((Fl_Font)i,&t);
     char buffer[128];
 #if 1
-    if (t) {
       char *p = buffer;
       if (t & FL_BOLD) {*p++ = '@'; *p++ = 'b';}
       if (t & FL_ITALIC) {*p++ = '@'; *p++ = 'i';}
+    *p++ = '@'; *p++ = '.';
       strcpy(p,name);
       name = buffer;
-    }
 #else // this is neat, but really slow on some X servers:
     sprintf(buffer, "@F%d@.%s", i, name);
     name = buffer;

@@ -83,6 +83,10 @@ LIB32=link.exe -lib
 # Name "fltk - Win32 Debug"
 # Begin Source File
 
+SOURCE=..\xutf8\case.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\filename_absolute.cxx
 # End Source File
 # Begin Source File
@@ -251,14 +255,6 @@ SOURCE=..\src\fl_draw_pixmap.cxx
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\fl_encoding_latin1.cxx
-# End Source File
-# Begin Source File
-
-SOURCE=..\src\fl_encoding_mac_roman.cxx
-# End Source File
-# Begin Source File
-
 SOURCE=..\src\fl_engraved_label.cxx
 # End Source File
 # Begin Source File
@@ -304,10 +300,6 @@ SOURCE=..\src\Fl_grab.cxx
 # Begin Source File
 
 SOURCE=..\src\Fl_Group.cxx
-# End Source File
-# Begin Source File
-
-SOURCE=..\src\fl_gtk.cxx
 # End Source File
 # Begin Source File
 
@@ -372,10 +364,6 @@ SOURCE=..\src\Fl_Menu_Window.cxx
 # Begin Source File
 
 SOURCE=..\src\Fl_Multi_Label.cxx
-# End Source File
-# Begin Source File
-
-SOURCE=..\src\fl_open_uri.cxx
 # End Source File
 # Begin Source File
 
@@ -531,6 +519,10 @@ SOURCE=..\src\Fl_Tooltip.cxx
 # End Source File
 # Begin Source File
 
+SOURCE=..\src\fl_utf8.cxx
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\Fl_Valuator.cxx
 # End Source File
 # Begin Source File
@@ -595,6 +587,10 @@ SOURCE=..\src\flstring.c
 # End Source File
 # Begin Source File
 
+SOURCE=..\xutf8\is_spacing.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\src\numericsort.c
 # End Source File
 # Begin Source File
@@ -603,11 +599,11 @@ SOURCE=..\src\scandir.c
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\screen_xywh.cxx
+SOURCE=..\src\vsnprintf.c
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\vsnprintf.c
+SOURCE=..\src\screen_xywh.cxx
 # End Source File
 # End Target
 # End Project
