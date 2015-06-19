@@ -88,6 +88,11 @@ CPPFILES =\
 	subwindow.cxx \
 	sudoku.cxx \
 	symbols.cxx \
+	table_input.cxx \
+	table_row.cxx \
+	table_sort.cxx \
+	table_widget.cxx \
+	tree.cxx \
 	tabs.cxx \
 	threads.cxx \
 	tile.cxx \
@@ -147,6 +152,11 @@ ALL =	\
 	subwindow$(EXEEXT) \
 	sudoku$(EXEEXT) \
 	symbols$(EXEEXT) \
+	table_input$(EXEEXT) \
+	table_row$(EXEEXT) \
+	table_sort$(EXEEXT) \
+	table_widget$(EXEEXT) \
+	tree$(EXEEXT) \
 	tabs$(EXEEXT) \
 	$(THREADS) \
 	tile$(EXEEXT) \
@@ -418,6 +428,16 @@ sudoku.exe: sudoku.o sudoku.rc
 	$(CXX) $(ARCHFLAGS) $(LDFLAGS) sudoku.o sudokures.o -o $@ $(AUDIOLIBS) $(LINKFLTKIMG) $(LDLIBS)
 
 symbols$(EXEEXT): symbols.o
+
+table_input$(EXEEXT): table_input.o
+
+table_row$(EXEEXT): table_row.o
+
+table_sort$(EXEEXT): table_sort.o
+
+table_widget$(EXEEXT): table_widget.o
+
+tree$(EXEEXT): tree.o
 
 tabs$(EXEEXT): tabs.o
 tabs.cxx:	tabs.fl ../fluid/fluid$(EXEEXT)

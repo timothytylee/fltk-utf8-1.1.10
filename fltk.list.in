@@ -312,6 +312,8 @@ l 0000 root sys $includedir/FL/Fl_Simple_Counter.h Fl_Simple_Counter.H
 l 0000 root sys $includedir/FL/Fl_Single_Window.h Fl_Single_Window.H
 l 0000 root sys $includedir/FL/Fl_Slider.h Fl_Slider.H
 l 0000 root sys $includedir/FL/Fl_Spinner.h Fl_Spinner.H
+l 0000 root sys $includedir/FL/Fl_Table.h Fl_Table.H
+l 0000 root sys $includedir/FL/Fl_Table_Row.h Fl_Table_Row.H
 l 0000 root sys $includedir/FL/Fl_Tabs.h Fl_Tabs.H
 l 0000 root sys $includedir/FL/Fl_Tile.h Fl_Tile.H
 l 0000 root sys $includedir/FL/Fl_Timer.h Fl_Timer.H
@@ -319,6 +321,7 @@ l 0000 root sys $includedir/FL/Fl_Toggle_Button.h Fl_Toggle_Button.H
 l 0000 root sys $includedir/FL/Fl_Toggle_Light_Button.h Fl_Toggle_Light_Button.H
 l 0000 root sys $includedir/FL/Fl_Toggle_Round_Button.h Fl_Toggle_Round_Button.H
 l 0000 root sys $includedir/FL/Fl_Tooltip.h Fl_Tooltip.H
+l 0000 root sys $includedir/FL/Fl_Tree.h Fl_Tree.H
 l 0000 root sys $includedir/FL/Fl_Valuator.h Fl_Valuator.H
 l 0000 root sys $includedir/FL/Fl_Value_Input.h Fl_Value_Input.H
 l 0000 root sys $includedir/FL/Fl_Value_Output.h Fl_Value_Output.H
