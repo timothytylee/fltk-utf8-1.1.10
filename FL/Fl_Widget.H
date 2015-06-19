@@ -204,6 +204,9 @@ public:
 
   Fl_Window* window() const ;
 
+  virtual Fl_Group* as_group() const {return 0;}
+  virtual Fl_Window* as_window() const {return 0;}
+
   // back compatability only:
   Fl_Color color2() const {return (Fl_Color)color2_;}
   void color2(unsigned a) {color2_ = a;}

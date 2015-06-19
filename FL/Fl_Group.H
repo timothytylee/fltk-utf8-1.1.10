@@ -91,6 +91,8 @@ public:
   void clip_children(int c) { if (c) set_flag(CLIP_CHILDREN); else clear_flag(CLIP_CHILDREN); }
   int clip_children() { return (flags() & CLIP_CHILDREN) != 0; }
 
+  virtual Fl_Group* as_group() const { return (Fl_Group*)this; }
+
   // back compatibility functions:
   void focus(Fl_Widget* o) {o->take_focus();}
   Fl_Widget* & _ddfdesign_kludge() {return resizable_;}

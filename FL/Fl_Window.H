@@ -121,6 +121,8 @@ public:
   static Fl_Window *current();
   void make_current();
 
+  virtual Fl_Window* as_window() const { return (Fl_Window*)this; }
+
   // for back-compatability only:
   void cursor(Fl_Cursor, Fl_Color=FL_BLACK, Fl_Color=FL_WHITE);
   void default_cursor(Fl_Cursor, Fl_Color=FL_BLACK, Fl_Color=FL_WHITE);
