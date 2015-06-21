@@ -294,8 +294,8 @@ static XftFontList* fontopen(const char* name, bool core) {
     }
   }
 
-    XftPattern *match_pat;  // the best available match on the system
-    XftResult match_result; // the result of our matching attempt
+  XftPattern *match_pat;  // the best available match on the system
+  XftResult match_result; // the result of our matching attempt
   // query the system to find a matching font for each encoding
   XftFontList* list = (XftFontList*)calloc(1, sizeof(XftFontList));
   for (int n = 0;  enc_strings[n];  n += 2)
@@ -308,10 +308,10 @@ static XftFontList* fontopen(const char* name, bool core) {
       XftPatternDel(fnt_pat, FC_LANG);
       if (strlen(enc_strings[n+1]))
 	XftPatternAddString(fnt_pat, FC_LANG, enc_strings[n + 1]);
-    match_pat = XftFontMatch(fl_display, fl_screen, fnt_pat, &match_result);
+      match_pat = XftFontMatch(fl_display, fl_screen, fnt_pat, &match_result);
       if (match_pat)
       {
-    // open the matched font
+	// open the matched font
 	fnt = XftFontOpenPattern(fl_display, match_pat);
 	if (!fnt)  XftPatternDestroy(match_pat);
       }
@@ -334,7 +334,7 @@ static XftFontList* fontopen(const char* name, bool core) {
       // Update ascent and descent of combined font set
       if (rec.ascent  > list->ascent)   list->ascent  = rec.ascent;
       if (rec.descent > list->descent)  list->descent = rec.descent;
-  }
+    }
   }
 
   // Tidy up the resources we allocated
@@ -353,7 +353,10 @@ Fl_FontSize::Fl_FontSize(const char* name) {
 
 Fl_FontSize::~Fl_FontSize() {
   if (this == fl_fontsize) fl_fontsize = 0;
-//  XftFontClose(fl_display, font);
+  for (int i = font->count;  i--;  ) {
+    XftMatch& rec = font->matches[i];
+    XftFontClose(fl_display, rec.font);
+  }
   free(font->matches);
   free(font);
 }
