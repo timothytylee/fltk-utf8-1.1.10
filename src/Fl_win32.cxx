@@ -172,6 +172,10 @@ static struct FD {
 
 extern unsigned int fl_codepage;
 
+void fl_close_display()
+{
+}
+
 void fl_reset_spot()
 {
 }
@@ -1899,26 +1903,6 @@ void Fl_Window::make_current() {
 
   current_ = this;
   fl_clip_region(0);
-}
-
-/* Make sure that all allocated fonts are released. This works only if 
-   Fl::run() is allowed to exit by closing all windows. Calling 'exit(int)'
-   will not automatically free any fonts. */
-void fl_free_fonts(void)
-{
-// remove the Fl_FontSize chains
-  int i;
-  Fl_Fontdesc * s;
-  Fl_FontSize * f;
-  Fl_FontSize * ff;
-  for (i=0; i<FL_FREE_FONT; i++) {
-    s = fl_fonts + i;
-    for (f=s->first; f; f=ff) {
-      ff = f->next;
-      delete f;
-      s->first = ff;
-    }
-  }
 }
 
 

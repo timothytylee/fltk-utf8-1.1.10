@@ -279,6 +279,8 @@ XIM fl_xim_im = 0;
 XIC fl_xim_ic = 0;
 char fl_is_over_the_spot = 0;
 static XRectangle status_area;
+static XFontSet ic_fs = NULL;
+static XFontSet spot_fs = NULL;
 int window_count = 0;
 
 static Atom WM_DELETE_WINDOW;
@@ -323,13 +325,16 @@ extern "C" {
 
 #ifndef USE_XFT
 extern char *fl_get_font_xfld(int fnum, int size);
+#else
+extern void fl_cleanup_xft_draw();
 #endif
+extern void fl_free_fonts();
 
 void fl_new_ic()
 {
 	XVaNestedList preedit_attr = NULL;
 	XVaNestedList status_attr = NULL;
-	static XFontSet   fs = NULL;
+	XFontSet      &fs = ic_fs;
 	char *fnt = NULL;
 	char          **missing_list;
 	int           missing_count;
@@ -339,7 +344,7 @@ void fl_new_ic()
 	int sarea = 0;
 	 XIMStyles* xim_styles = NULL;
 
-	if (!fs) { 
+	if (!fs) {
 #ifndef USE_XFT
 		fnt = fl_get_font_xfld(0, 14);
 #endif
@@ -420,7 +425,7 @@ void fl_set_spot(int font, int size, int x, int y, int w, int h)
 {
  	int change = 0;
 	XVaNestedList preedit_attr;
-	static XFontSet   fs = NULL;
+	XFontSet      &fs = spot_fs;
 	char          **missing_list;
 	int           missing_count;
 	char          *def_string;
@@ -574,8 +579,37 @@ void fl_open_display(Display* d) {
 }
 
 void fl_close_display() {
+  if (!fl_display) return;
+
+  // Release XIM resources
+  if (fl_xim_ic) {
+    XDestroyIC(fl_xim_ic);
+    fl_xim_ic = 0;
+  }
+  if (fl_xim_im) {
+    XCloseIM(fl_xim_im);
+    fl_xim_im = 0;
+  }
+  if (ic_fs) {
+    XFreeFontSet(fl_display, ic_fs);
+    ic_fs = 0;
+  }
+  if (spot_fs) {
+    XFreeFontSet(fl_display, spot_fs);
+    spot_fs = 0;
+  }
+
+  // Release fonts
+  fl_free_fonts();
+
+#if USE_XFT
+  // Release Xft resources
+  fl_cleanup_xft_draw();
+#endif
+
   Fl::remove_fd(ConnectionNumber(fl_display));
   XCloseDisplay(fl_display);
+  fl_display = 0;
 }
 
 static int fl_workarea_xywh[4] = { -1, -1, -1, -1 };

@@ -674,6 +674,19 @@ void fl_draw(const char *str, int n, int x, int y) {
 void fl_rtl_draw(const char *str, int n, int x, int y) {
 }
 
+void fl_cleanup_xft_draw() {
+  if (draw) {
+    XftDrawDestroy(draw);
+    draw = 0;
+  }
+#if USE_OVERLAY
+  if (draw_overlay) {
+    XftDrawDestroy(draw_overlay);
+    draw_overlay = 0;
+  }
+#endif
+}
+
 //
 // End of "$Id: fl_font_xft.cxx 6871 2009-09-15 20:33:55Z matt $"
 //
