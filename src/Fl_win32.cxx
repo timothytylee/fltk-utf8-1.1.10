@@ -53,6 +53,7 @@
 #if !defined(__GNUC__) || __GNUC__ >= 3
 #  include <ole2.h>
 #  include <shellapi.h>
+#  include <FL/Fl_Msaa_Proxy.H>
 #endif // !__GNUC__ || __GNUC__ >= 3
 
 
@@ -66,6 +67,29 @@
 
 // USE_TRACK_MOUSE - define NO_TRACK_MOUSE if you don't have
 // TrackMouseEvent()...
+/*
+ * Dynamic linking of oleacc.dll
+ * This library is only needed for two functions relating to MSAA
+ */
+flTypeLresultFromObject flLresultFromObject = 0;
+flTypeAccessibleObjectFromWindow flAccessibleObjectFromWindow = 0;
+
+static HMODULE s_oleacc_module = 0;
+static HMODULE get_oleacc_module() {
+  if (!s_oleacc_module) {
+    s_oleacc_module = LoadLibrary("OLEACC.DLL");
+    if (!s_oleacc_module)
+      Fl::fatal("FLTK Lib Error: OLEACC.DLL file not found!\n\n"
+        "Please check your active accessibility library availability.");
+    flLresultFromObject = (flTypeLresultFromObject)
+        GetProcAddress(s_oleacc_module, "LresultFromObject");
+    flAccessibleObjectFromWindow = (flTypeAccessibleObjectFromWindow)
+        GetProcAddress(s_oleacc_module, "AccessibleObjectFromWindow");
+  }
+  return s_oleacc_module;
+}
+
+
 //
 // Now (Dec. 2008) we can assume that current Cygwin/MinGW versions
 // support the TrackMouseEvent() function, but WinCE obviously doesn't
@@ -1030,6 +1054,23 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     if (fl_msg.message == WM_RENDERALLFORMATS) CloseClipboard();
     return 1;}
 
+#if !defined(__GNUC__) || __GNUC__ >= 3
+  case WM_GETOBJECT: {
+      get_oleacc_module();
+
+      // Return IAccessible proxy only for client area
+      if ((DWORD)fl_msg.lParam != OBJID_CLIENT)  break;
+
+      // Make sure the window has a proxy object
+      Fl_Msaa_Proxy* proxy = window->msaa_proxy();
+      if (!proxy)  break;
+
+      // Pass IAccessible proxy to MSAA
+      return flLresultFromObject(IID_IAccessible,
+	  fl_msg.wParam, (IUnknown*)proxy);
+    }
+#endif // !__GNUC__ || __GNUC__ >= 3
+
   default:
     if (Fl::handle(0,0)) return 0;
     break;
@@ -1721,6 +1762,509 @@ void fl_cleanup_dc_list(void) {          // clean up the list
     t = win_DC_list;
   } while(t);
 }
+
+
+#if !defined(__GNUC__) || __GNUC__ >= 3
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+/*----------- IAccessible proxy to perform parameter validation -----------*/
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::QueryInterface(
+    /* [in] */ REFIID riid,
+    /* [iid_is][out] */ void** ppvObject)
+{
+  // Reject unsupported interfaces
+  if ((riid == IID_IAccessible) ||
+      (riid == IID_IDispatch) ||
+      (riid == IID_IUnknown))
+  {
+    // Add reference for supported interfaces
+    *ppvObject = this;
+    ((LPUNKNOWN)*ppvObject)->AddRef();
+    return S_OK;
+  }
+
+  *ppvObject = NULL;
+  return E_NOINTERFACE;
+}
+
+
+ULONG STDMETHODCALLTYPE
+Fl_Msaa_Proxy::AddRef()
+{
+  return InterlockedIncrement(&mRefCount);
+}
+
+
+ULONG STDMETHODCALLTYPE
+Fl_Msaa_Proxy::Release()
+{
+  ULONG count = InterlockedDecrement(&mRefCount);
+  if (count == 0)  delete this;
+  return count;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::GetTypeInfoCount(
+    /* [out] */ UINT* pctinfo)
+{
+  *pctinfo = 0;
+  return E_NOTIMPL;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::GetTypeInfo(
+    /* [in] */ UINT iTInfo,
+    /* [in] */ LCID lcid,
+    /* [out] */ ITypeInfo** ppTInfo)
+{
+  *ppTInfo = 0;
+  return E_NOTIMPL;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::GetIDsOfNames(
+    /* [in] */ REFIID riid,
+    /* [size_is][in] */ LPOLESTR* rgszNames,
+    /* [in] */ UINT cNames,
+    /* [in] */ LCID lcid,
+    /* [size_is][out] */ DISPID* rgDispId)
+{
+  *rgDispId = 0;
+  return E_NOTIMPL;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::Invoke(
+    /* [in] */ DISPID dispIdMember,
+    /* [in] */ REFIID riid,
+    /* [in] */ LCID lcid,
+    /* [in] */ WORD wFlags,
+    /* [out][in] */ DISPPARAMS* pDispParams,
+    /* [out] */ VARIANT* pVarResult,
+    /* [out] */ EXCEPINFO* pExcepInfo,
+    /* [out] */ UINT* puArgErr)
+{
+  *puArgErr = 0;
+  return E_NOTIMPL;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accParent(
+    /* [retval][out] */ IDispatch** ppdispParent)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!ppdispParent)  return E_INVALIDARG;
+  *ppdispParent = NULL;
+  return mpObj->msaa_get_accParent(ppdispParent);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accChildCount(
+    /* [retval][out] */ long* pcountChildren)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pcountChildren)  return E_INVALIDARG;
+  *pcountChildren = 0;
+  return mpObj->msaa_get_accChildCount(pcountChildren);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accChild(
+    /* [in] */ VARIANT varChild,
+    /* [retval][out] */ IDispatch** ppdispChild)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)  return E_INVALIDARG;
+  if (!ppdispChild)  return E_INVALIDARG;
+  *ppdispChild = NULL;
+  return mpObj->msaa_get_accChild(varChild, ppdispChild);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accName(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszName)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszName)  return E_INVALIDARG;
+  *pszName = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accName(varChild, pszName);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accValue(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszValue)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszValue)  return E_INVALIDARG;
+  *pszValue = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accValue(varChild, pszValue);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accDescription(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszDescription)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszDescription)  return E_INVALIDARG;
+  *pszDescription = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accDescription(varChild, pszDescription);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accRole(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ VARIANT* pvarRole)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarRole)  return E_INVALIDARG;
+  pvarRole->vt = VT_EMPTY;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accRole(varChild, pvarRole);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accState(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ VARIANT* pvarState)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarState)  return E_INVALIDARG;
+  pvarState->vt = VT_EMPTY;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accState(varChild, pvarState);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accHelp(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszHelp)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszHelp)  return E_INVALIDARG;
+  *pszHelp = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accHelp(varChild, pszHelp);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accHelpTopic(
+    /* [out] */ BSTR* pszHelpFile,
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ long* pidTopic)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszHelpFile)  return E_INVALIDARG;
+  if (!pidTopic)  return E_INVALIDARG;
+  *pszHelpFile = NULL;
+  *pidTopic = 0;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accHelpTopic(pszHelpFile, varChild, pidTopic);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accKeyboardShortcut(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszKeyboardShortcut)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszKeyboardShortcut)  return E_INVALIDARG;
+  *pszKeyboardShortcut = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accKeyboardShortcut(
+      varChild, pszKeyboardShortcut);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accFocus(
+    /* [retval][out] */ VARIANT *pvarChild)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChild)  return E_INVALIDARG;
+  pvarChild->vt = VT_EMPTY;
+  return mpObj->msaa_get_accFocus(pvarChild);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accSelection(
+    /* [retval][out] */ VARIANT* pvarChildren)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChildren)  return E_INVALIDARG;
+  pvarChildren->vt = VT_EMPTY;
+  return mpObj->msaa_get_accSelection(pvarChildren);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::get_accDefaultAction(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszDefaultAction)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pszDefaultAction)  return E_INVALIDARG;
+  *pszDefaultAction = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_get_accDefaultAction(varChild, pszDefaultAction);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::accSelect(
+    /* [in] */ long flagsSelect,
+    /* [optional][in] */ VARIANT varChild)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_accSelect(flagsSelect, varChild);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::accLocation(
+    /* [out] */ long* pxLeft,
+    /* [out] */ long* pyTop,
+    /* [out] */ long* pcxWidth,
+    /* [out] */ long* pcyHeight,
+    /* [optional][in] */ VARIANT varChild)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)  return E_INVALIDARG;
+  *pxLeft    = 0;
+  *pyTop     = 0;
+  *pcxWidth  = 0;
+  *pcyHeight = 0;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_accLocation(pxLeft, pyTop, pcxWidth, pcyHeight, varChild);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::accNavigate(
+    /* [in] */ long navDir,
+    /* [optional][in] */ VARIANT varStart,
+    /* [retval][out] */ VARIANT* pvarEndUpAt)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarEndUpAt)  return E_INVALIDARG;
+  pvarEndUpAt->vt = VT_EMPTY;
+  if (varStart.vt != VT_I4)
+  {
+    varStart.vt   = VT_I4;
+    varStart.lVal = 0;
+  }
+  return mpObj->msaa_accNavigate(navDir, varStart, pvarEndUpAt);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::accHitTest(
+    /* [in] */ long xLeft,
+    /* [in] */ long yTop,
+    /* [retval][out] */ VARIANT* pvarChild)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChild)  return E_INVALIDARG;
+  pvarChild->vt = VT_EMPTY;
+  return mpObj->msaa_accHitTest(xLeft, yTop, pvarChild);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::accDoDefaultAction(
+    /* [optional][in] */ VARIANT varChild)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_accDoDefaultAction(varChild);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::put_accName(
+    /* [optional][in] */ VARIANT varChild,
+    /* [in] */ BSTR szName)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_put_accName(varChild, szName);
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Msaa_Proxy::put_accValue(
+    /* [optional][in] */ VARIANT varChild,
+    /* [in] */ BSTR szValue)
+{
+  if (!mpObj)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return mpObj->msaa_put_accValue(varChild, szValue);
+}
+
+
+/*-------------------------- BSTR utility functions -----------------------*/
+
+void
+fl_str_to_bstr(const char* str, size_t len, BSTR* bstr)
+{
+  if (!str)  str = "";
+  if (len < 0)  len = strlen(str);
+  DWORD blen = MultiByteToWideChar(CP_UTF8, 0, str, len, 0, 0);
+  *bstr = SysAllocStringLen(0, blen);
+  if (*bstr)  MultiByteToWideChar(CP_UTF8, 0, str, len, *bstr, blen);
+}
+
+
+char*
+fl_bstr_to_str(const BSTR bstr, size_t* pLen)
+{
+  DWORD blen = SysStringLen(bstr);
+  int len;
+  if (blen)  len = WideCharToMultiByte(CP_UTF8, 0, bstr, blen, 0, 0, 0, 0);
+  else       len = 0;
+  CHAR* str = (CHAR*)malloc(len + 1); 
+  if (str)
+  {
+    if (len)  WideCharToMultiByte(CP_UTF8, 0, bstr, blen, str, len, 0, 0);
+    str[len] = '\0';
+  }
+  if (pLen)  *pLen = len;
+  return (char*)str;
+}
+
+
+char*
+fl_label_to_text(const char* label, size_t* pLen)
+{
+  if (!label)  label = "";
+  char* text = (char*)malloc(strlen(label) + 1);
+  char* ptr = text;
+  bool  escaped = false;
+  for (;  *label;  label++)
+  {
+    if (!escaped && (*label == '&'))  escaped = true;
+    else
+    {
+      *ptr++ = *label;
+      escaped = false;
+    }
+  }
+  *ptr = '\0';
+  if (pLen)  *pLen = ptr - text;
+  return text;
+}
+
+
+char*
+fl_label_to_shortcut(const char* label, size_t* pLen)
+{
+  if (!label)  label = "";
+  char* shortcut = (char*)malloc(2);
+  char* ptr = shortcut;
+  bool  escaped = false;
+  for (;  *label;  label++)
+  {
+    if (escaped)
+    {
+      *ptr++ = tolower(*label);
+      break;
+    }
+    else if (*label == '&')  escaped = true;
+  }
+  *ptr = '\0';
+  if (pLen)  *pLen = ptr - shortcut;
+  return shortcut;
+}
+
+
+void
+fl_free_str(char* str)
+{
+  free(str);
+}
+#endif // !__GNUC__ || __GNUC__ >= 3
 
 
 //

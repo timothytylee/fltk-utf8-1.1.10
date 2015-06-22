@@ -123,6 +123,17 @@ public:
   // for back compatability only:
   void replace(int a, const char* b) {text(a, b);}
   void display(int, int=1);
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+public:
+  virtual long msaa_browser_size();
+  virtual bool msaa_browser_displayed(long childId);
+  virtual long msaa_browser_find_item(int mouseY);
+  virtual long msaa_browser_focus();
+  virtual void msaa_browser_focus(long childId);
+  virtual const char* msaa_browser_text(long childId);
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 #endif

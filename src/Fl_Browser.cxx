@@ -546,6 +546,56 @@ void Fl_Browser::swap(int ai, int bi) {
   swap(a,b);
 }
 
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+#include <FL/x.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+long
+Fl_Browser::msaa_browser_size()
+{
+  return size();
+}
+
+
+bool
+Fl_Browser::msaa_browser_displayed(long childId)
+{
+  return displayed(childId);
+}
+
+
+long 
+Fl_Browser::msaa_browser_find_item(int mouseY)
+{
+  return lineno(find_item(mouseY));
+}
+
+
+long
+Fl_Browser::msaa_browser_focus()
+{
+  return value();
+}
+
+
+void
+Fl_Browser::msaa_browser_focus(long childId)
+{
+  select(childId);
+}
+
+
+const char*
+Fl_Browser::msaa_browser_text(long childId)
+{
+  return text(childId);
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
 //
 // End of "$Id: Fl_Browser.cxx 5987 2007-11-20 21:57:17Z mike $".
 //

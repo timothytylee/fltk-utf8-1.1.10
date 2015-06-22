@@ -170,6 +170,122 @@ Fl_Button::Fl_Button(int X, int Y, int W, int H, const char *l)
   set_flag(SHORTCUT_LABEL);
 }
 
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+long
+Fl_Button::msaa_role()
+{
+  switch (type())
+  {
+    case FL_TOGGLE_BUTTON:  return ROLE_SYSTEM_CHECKBUTTON;
+    case FL_RADIO_BUTTON:   return ROLE_SYSTEM_RADIOBUTTON;
+    default:                return ROLE_SYSTEM_PUSHBUTTON;
+  }
+}
+
+
+long
+Fl_Button::msaa_state()
+{
+  long s = STATE_SYSTEM_FOCUSABLE | (visible() ? 0 : STATE_SYSTEM_INVISIBLE);
+  switch(type())
+  {
+    case FL_TOGGLE_BUTTON:
+    case FL_RADIO_BUTTON:
+      if (value())  s |= STATE_SYSTEM_CHECKED;
+      break;
+    default:
+      break;
+  }
+  return s;
+}
+
+
+HRESULT 
+Fl_Button::msaa_get_accName(VARIANT varChild, BSTR* pszName)
+{
+  // Use human-readable button text as widget name
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  size_t len;
+  char* text = fl_label_to_text(label(), &len);
+  fl_str_to_bstr(text, len, pszName);
+  fl_free_str(text);
+  return S_OK;
+}
+
+
+HRESULT
+Fl_Button::msaa_get_accValue(VARIANT varChild, BSTR* pszValue)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  fl_str_to_bstr((value_ ? "1" : "0"), -1, pszValue);
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Button::msaa_get_accKeyboardShortcut(VARIANT varChild,
+    BSTR* pszKeyboardShortcut)
+{
+  // Extract keyboard shortcut from label
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  size_t len;
+  char* shortcut = fl_label_to_shortcut(label(), &len);
+  fl_str_to_bstr(shortcut, len, pszKeyboardShortcut);
+  fl_free_str(shortcut);
+  return S_OK;
+}
+
+
+HRESULT
+Fl_Button::msaa_get_accDefaultAction(VARIANT varChild, BSTR* pszDefaultAction)
+{
+  // Use widget label as default action
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  size_t len;
+  char* text = fl_label_to_text(label(), &len);
+  fl_str_to_bstr(text, len, pszDefaultAction);
+  fl_free_str(text);
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Button::msaa_accDoDefaultAction(VARIANT varChild)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  if (type() == FL_RADIO_BUTTON && !value_) {
+    setonly();
+    set_changed();
+    if (when() & FL_WHEN_CHANGED) do_callback();
+  } else if (type() == FL_TOGGLE_BUTTON) {
+    value(!value());
+    set_changed();
+    if (when() & FL_WHEN_CHANGED) do_callback();
+  } else if (when() & FL_WHEN_RELEASE) do_callback();
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Button::msaa_put_accValue(VARIANT varChild, BSTR szValue)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  char* s = fl_bstr_to_str(szValue);
+  int v = atoi(s);
+  if (type() == FL_RADIO_BUTTON && v)  setonly();
+  else  value(v);
+  fl_free_str(s);
+  return S_OK;
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
+
 //
 // End of "$Id: Fl_Button.cxx 6589 2008-12-17 10:47:09Z fabien $".
 //

@@ -178,6 +178,12 @@ Fl_Menu_::Fl_Menu_(int X,int Y,int W,int H,const char* l)
   textsize((uchar)FL_NORMAL_SIZE);
   textcolor(FL_FOREGROUND_COLOR);
   down_box(FL_NO_BOX);
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // Initialize MSAA stuff
+  msaa_menu_items_   = 0;
+  msaa_menu_popups_  = 0;
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 }
 
 int Fl_Menu_::size() const {
@@ -214,6 +220,9 @@ Fl_Menu_::~Fl_Menu_() {
 Fl_Menu_* fl_menu_array_owner = 0;
 
 void Fl_Menu_::clear() {
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  msaa_menu_clear();
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
   if (alloc) {
     if (alloc>1) for (int i = size(); i--;)
       if (menu_[i].text) free((void*)menu_[i].text);
@@ -226,6 +235,650 @@ void Fl_Menu_::clear() {
     alloc = 0;
   }
 }
+
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+#include <FL/fl_draw.H>
+#include <FL/x.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+// Specialized MSAA proxy for Fl_Menu_ object
+class Fl_Menu_Proxy : public Fl_Msaa_Proxy
+{
+private:
+  int  mPos;		// Offset of menu item in menu bar
+  bool mIsPopup;	// Is this a proxy for menu item container
+
+public:
+  Fl_Menu_Proxy(Fl_Widget* o, int pos, bool isPopup) :
+      Fl_Msaa_Proxy(o), mPos(pos), mIsPopup(isPopup)  {}
+
+  // IAccessible implementation
+  HRESULT STDMETHODCALLTYPE get_accParent(IDispatch**);
+  HRESULT STDMETHODCALLTYPE get_accChildCount(long*);
+  HRESULT STDMETHODCALLTYPE get_accChild(VARIANT, IDispatch**);
+  HRESULT STDMETHODCALLTYPE get_accName(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accValue(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accDescription(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accRole(VARIANT, VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accState(VARIANT, VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accHelp(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accHelpTopic(BSTR*, VARIANT, long*);
+  HRESULT STDMETHODCALLTYPE get_accKeyboardShortcut(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accFocus(VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accSelection(VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accDefaultAction(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE accSelect(long, VARIANT);
+  HRESULT STDMETHODCALLTYPE accLocation(long*, long*, long*, long*, VARIANT);
+  HRESULT STDMETHODCALLTYPE accNavigate(long, VARIANT, VARIANT*);
+  HRESULT STDMETHODCALLTYPE accHitTest(long, long, VARIANT*);
+  HRESULT STDMETHODCALLTYPE accDoDefaultAction(VARIANT);
+  HRESULT STDMETHODCALLTYPE put_accName(VARIANT, BSTR);
+  HRESULT STDMETHODCALLTYPE put_accValue(VARIANT, BSTR);
+};
+
+
+static int
+count_top_level_items(const Fl_Menu_Item* item)
+{
+    int count = 0;
+    while (item->label())
+    {
+        item = item->next();
+        count++;
+    }
+    return count;
+}
+
+
+static int
+get_parent_index(const Fl_Menu_* menubar, int index)
+{
+    index--;
+    const Fl_Menu_Item* item = menubar->menu() + index;
+    for (int nest = 1;  index >= 0;  index--, item--)
+    {
+        if (!item->label())  nest++;  
+        else if (item->submenu())
+        {
+            nest--;
+            if (nest < 0)  break;
+        }
+    }
+    return index + 1;
+}
+
+
+static const Fl_Menu_Item*
+get_child_item(const Fl_Menu_* menubar, int index, int child_id)
+{
+    if ((index == 0) && (child_id == 0))  return NULL;
+    if (child_id == 0)  return menubar->menu() + index - 1;
+    const Fl_Menu_Item* item = menubar->menu() + index;
+    for (;  child_id > 1;  child_id--, item = item->next());
+    return item;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accParent(
+    /* [retval][out] */ IDispatch** ppdispParent)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!ppdispParent)  return E_INVALIDARG;
+  *ppdispParent = NULL;
+
+  Fl_Msaa_Proxy* parent;
+  if (mPos == 0)
+  {
+    // Fl_Menu_ has a Fl_Msaa_Proxy parent
+    Fl_Widget* p = menubar->parent();
+    if (p)  parent = p->msaa_proxy();
+  }
+  else if (mIsPopup)
+  {
+    // Parent of pop-up menu is corresponding item
+    parent = menubar->msaa_menu_proxy(mPos, false);
+  }
+  else
+  {
+    // Parent of menu item is pop-up menu
+    int parent_idx = get_parent_index(menubar, mPos);
+    parent = menubar->msaa_menu_proxy(parent_idx, true);
+  }
+
+  if (!parent)  return S_FALSE;
+  parent->QueryInterface(IID_IDispatch, (void**)ppdispParent);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accChildCount(
+    /* [retval][out] */ long* pcountChildren)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pcountChildren)  return E_INVALIDARG;
+  if (mIsPopup)
+    *pcountChildren =
+      count_top_level_items(menubar->menu() + mPos);
+  else
+    *pcountChildren = 1;
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accChild(
+    /* [in] */ VARIANT varChild,
+    /* [retval][out] */ IDispatch** ppdispChild)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)  return E_INVALIDARG;
+  if (!ppdispChild)  return E_INVALIDARG;
+  *ppdispChild = NULL;
+
+  // Proxy for submenu item contains only a popup
+  if (!mIsPopup)
+  {
+    if (varChild.lVal != 1)  return E_INVALIDARG;
+    Fl_Menu_Proxy* proxy = menubar->msaa_menu_proxy(mPos, true);
+    if (!proxy)  return S_FALSE;
+    proxy->QueryInterface(IID_IDispatch, (void**)ppdispChild);
+    return S_OK;
+  }
+
+  // Find position of required child item
+  const Fl_Menu_Item* menu = menubar->menu();
+  int pos = get_child_item(menubar, mPos, varChild.lVal) - menu;
+
+  // Get proxy item only for sub-menu
+  if (!menu[pos].submenu())  return S_FALSE;
+
+  // Make sure proxy is valid
+  Fl_Menu_Proxy* proxy = menubar->msaa_menu_proxy(pos + 1, false);
+  if (!proxy)  return S_FALSE;
+
+  // Add reference to proxy
+  proxy->QueryInterface(IID_IDispatch, (void**)ppdispChild);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accName(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszName)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszName)  return E_INVALIDARG;
+  *pszName = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+
+  if ((mPos == 0) && (varChild.lVal == 0))
+  {
+    fl_str_to_bstr(menubar->label(), -1, pszName);
+    return S_OK;
+  }
+  const Fl_Menu_Item* item = get_child_item(menubar, mPos, varChild.lVal);
+  if (!item)  return E_INVALIDARG;
+
+  // Copy human-readable label and shortcut
+  size_t len;
+  char* name = fl_label_to_text(item->label(), &len);
+  if (!item->shortcut())  fl_str_to_bstr(name, len, pszName);
+  else
+  {
+    const char* shortcut = fl_shortcut_label(item->shortcut());
+    size_t full_len = len + strlen(shortcut) + 1;
+    char* s = (char*)malloc(full_len + 1);
+    sprintf(s, "%s\t%s", name, shortcut);
+    fl_str_to_bstr(s, full_len, pszName);
+    free(s);
+  }
+  fl_free_str(name);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accValue(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszValue)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszValue)  return E_INVALIDARG;
+  *pszValue = NULL;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accDescription(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszDescription)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszDescription)  return E_INVALIDARG;
+  *pszDescription = NULL;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accRole(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ VARIANT* pvarRole)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarRole)  return E_INVALIDARG;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  pvarRole->vt   = VT_I4;
+  if (mPos == 0)
+    pvarRole->lVal = ROLE_SYSTEM_MENUBAR;
+  else if (mIsPopup && (varChild.lVal == 0))
+    pvarRole->lVal = ROLE_SYSTEM_MENUPOPUP;
+  else 
+    pvarRole->lVal = ROLE_SYSTEM_MENUITEM;
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accState(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ VARIANT* pvarState)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarState)  return E_INVALIDARG;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  pvarState->vt = VT_I4;
+  pvarState->lVal = 0;
+  if ((mPos == 0) || !mIsPopup || (varChild.lVal != 0))
+    pvarState->lVal = 0;
+  else
+    pvarState->lVal = STATE_SYSTEM_INVISIBLE;
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accHelp(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszHelp)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszHelp)  return E_INVALIDARG;
+  *pszHelp = NULL;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accHelpTopic(
+    /* [out] */ BSTR* pszHelpFile,
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ long* pidTopic)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszHelpFile)  return E_INVALIDARG;
+  if (!pidTopic)  return E_INVALIDARG;
+  *pszHelpFile = NULL;
+  *pidTopic = 0;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accKeyboardShortcut(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszKeyboardShortcut)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszKeyboardShortcut)  return E_INVALIDARG;
+  *pszKeyboardShortcut = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if (((mPos == 0) || mIsPopup) && (varChild.lVal == 0))
+  {
+    // Menu bar and popup proxy has no shortcut
+    return S_FALSE;
+  }
+  const Fl_Menu_Item* item = get_child_item(menubar, mPos, varChild.lVal);
+  if (!item)  return E_INVALIDARG;
+  size_t len;
+  char* shortcut = fl_label_to_shortcut(item->label(), &len);
+  fl_str_to_bstr(shortcut, len, pszKeyboardShortcut);
+  fl_free_str(shortcut);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accFocus(
+    /* [retval][out] */ VARIANT *pvarChild)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChild)  return E_INVALIDARG;
+  pvarChild->vt = VT_EMPTY;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accSelection(
+    /* [retval][out] */ VARIANT* pvarChildren)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChildren)  return E_INVALIDARG;
+  pvarChildren->vt = VT_EMPTY;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::get_accDefaultAction(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszDefaultAction)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pszDefaultAction)  return E_INVALIDARG;
+  if (!mIsPopup ||
+      (mIsPopup && (varChild.lVal == 0)))
+  {
+    *pszDefaultAction = NULL;
+    return S_FALSE;
+  }
+  else
+  {
+    fl_str_to_bstr("Execute", -1, pszDefaultAction);
+    return S_OK;
+  }
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::accSelect(
+    /* [in] */ long flagsSelect,
+    /* [optional][in] */ VARIANT varChild)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::accLocation(
+    /* [out] */ long* pxLeft,
+    /* [out] */ long* pyTop,
+    /* [out] */ long* pcxWidth,
+    /* [out] */ long* pcyHeight,
+    /* [optional][in] */ VARIANT varChild)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)  return E_INVALIDARG;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+
+  // Find parent window's position on screen
+  POINT offset = {0, 0};
+  ClientToScreen(fl_xid(menubar->window()), &offset);
+
+  // Return menubar location
+  int pos = mPos;
+  int child_id = varChild.lVal;
+  if ((pos == 0) && (child_id == 0))
+  {
+    *pxLeft    = menubar->x() + offset.x;
+    *pyTop     = menubar->y() + offset.y;
+    *pcxWidth  = menubar->w();
+    *pcyHeight = menubar->h();
+    return S_OK;
+  }
+
+  // Find pointer for top level menu item
+  const Fl_Menu_Item* target = NULL;
+  if ((pos == 0) && !get_child_item(menubar, 0, child_id)->submenu())
+    target = get_child_item(menubar, 0, child_id);
+  else if ((child_id == 0) && !mIsPopup &&
+      (get_parent_index(menubar, pos) == 0))
+    target = menubar->menu() + pos - 1;
+
+  // Return top level item location -- see code for Fl_Menu_::draw()
+  if (target)
+  {
+    int X = 6;
+    int skip = child_id - 1;
+    const Fl_Menu_Item* item = menubar->menu();
+    for (;  item->label() && (item != target);  item = item->next())
+      X += item->measure(0, menubar) + 16;
+    *pxLeft    = menubar->x() + offset.x + X;
+    *pyTop     = menubar->y() + offset.y;
+    *pcxWidth  = item->measure(0, menubar) + 6;
+    *pcyHeight = menubar->h();
+    return S_OK;
+  }
+
+  // Fill in dummy values
+  *pxLeft    = 0;
+  *pyTop     = 0;
+  *pcxWidth  = 0;
+  *pcyHeight = 0;
+
+  // Only pop-up menus have a location
+  if (mIsPopup && (child_id == 0))  return S_OK;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::accNavigate(
+    /* [in] */ long navDir,
+    /* [optional][in] */ VARIANT varStart,
+    /* [retval][out] */ VARIANT* pvarEndUpAt)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarEndUpAt)  return E_INVALIDARG;
+  pvarEndUpAt->vt = VT_EMPTY;
+  if (varStart.vt != VT_I4)
+  {
+    varStart.vt   = VT_I4;
+    varStart.lVal = 0;
+  }
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::accHitTest(
+    /* [in] */ long xLeft,
+    /* [in] */ long yTop,
+    /* [retval][out] */ VARIANT* pvarChild)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChild)  return E_INVALIDARG;
+  pvarChild->vt = VT_EMPTY;
+
+  // Obtain widget location in screen co-ordinates
+  long x, y, w, h;
+  VARIANT self;
+  self.vt   = VT_I4;
+  self.lVal = 0;
+  if (S_OK != accLocation(&x, &y, &w, &h, self))  return S_FALSE;
+
+  // Now perform check
+  if ((xLeft >= x) && (xLeft < x + w) && (yTop >= y) && (yTop < y + h))
+  {
+    pvarChild->vt   = VT_I4;
+    pvarChild->lVal = 0;
+    return S_OK;
+  }
+  else
+    return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::accDoDefaultAction(
+    /* [optional][in] */ VARIANT varChild)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+
+  if ((mPos == 0) && (varChild.lVal == 0))
+  {
+    menubar->do_callback();
+    return S_OK;
+  }
+  const Fl_Menu_Item* item = get_child_item(menubar, mPos, varChild.lVal);
+  if (!item)  return E_INVALIDARG;
+  menubar->picked(item);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::put_accName(
+    /* [optional][in] */ VARIANT varChild,
+    /* [in] */ BSTR szName)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Menu_Proxy::put_accValue(
+    /* [optional][in] */ VARIANT varChild,
+    /* [in] */ BSTR szValue)
+{
+  Fl_Menu_* menubar = (Fl_Menu_*)mpObj;
+  if (!menubar)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return S_FALSE;
+}
+
+
+/*-------------------------- Fl_Menu_ MSAA support ------------------------*/
+
+void
+Fl_Menu_::msaa_menu_clear()
+{
+  // Destroy cache of MSAA proxy
+  for (int i = size() - 1;  (i >= 0) && msaa_menu_items_;  i--)
+  {
+    Fl_Menu_Proxy* proxy;
+    if ((proxy = msaa_menu_items_[i]))
+    {
+      proxy->Detach();
+      proxy->Release();
+    }
+    if ((proxy = msaa_menu_popups_[i]))
+    {
+      proxy->Detach();
+      proxy->Release();
+    }
+  }
+  if (msaa_menu_items_)
+  {
+    free(msaa_menu_items_);
+    free(msaa_menu_popups_);
+    msaa_menu_items_ = 0;
+    msaa_menu_popups_ = 0;
+  }
+}
+
+
+Fl_Menu_Proxy*
+Fl_Menu_::msaa_menu_proxy(int pos, bool isPopup)
+{
+  // Create new storage for proxies if necessary
+  if (!msaa_menu_items_)
+  {
+    msaa_menu_items_ =
+      (Fl_Menu_Proxy**)calloc(size(), sizeof(Fl_Menu_Proxy*));
+    msaa_menu_popups_ =
+      (Fl_Menu_Proxy**)calloc(size(), sizeof(Fl_Menu_Proxy*));
+  }
+
+  // Determine required proxy type
+  Fl_Menu_Proxy** cache = isPopup ? msaa_menu_popups_ : msaa_menu_items_;
+  if (cache[pos])  return cache[pos];
+
+  // Create missing proxy
+  Fl_Menu_Proxy* proxy = new Fl_Menu_Proxy(this, pos, isPopup);
+  if (proxy)
+  {
+    proxy->AddRef();
+    cache[pos] = proxy;
+  }
+  return proxy;
+}
+
+
+Fl_Msaa_Proxy*
+Fl_Menu_::msaa_proxy()
+{
+  // Create specialized proxy for menu bar
+  if (!msaa_proxy_)  msaa_proxy_ = msaa_menu_proxy(0, true);
+  return msaa_proxy_;
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
 
 //
 // End of "$Id: Fl_Menu_.cxx 5190 2006-06-09 16:16:34Z mike $".

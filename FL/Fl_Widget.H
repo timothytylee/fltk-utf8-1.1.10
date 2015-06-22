@@ -30,10 +30,15 @@
 
 #include "Enumerations.H"
 
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#  include <ole2.h>
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
 class Fl_Widget;
 class Fl_Window;
 class Fl_Group;
 class Fl_Image;
+class Fl_Msaa_Proxy;
 
 typedef void (Fl_Callback )(Fl_Widget*, void*);
 typedef Fl_Callback* Fl_Callback_p; // needed for BORLAND
@@ -207,6 +212,43 @@ public:
   // back compatability only:
   Fl_Color color2() const {return (Fl_Color)color2_;}
   void color2(unsigned a) {color2_ = a;}
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+protected:
+  Fl_Msaa_Proxy* msaa_proxy_;
+
+  virtual void msaa_cleanup();
+  virtual const Fl_Window* msaa_window() const  {return window();}
+  virtual bool msaa_use_proxy()  {return true;}
+  virtual long msaa_role();
+  virtual long msaa_state();
+
+public:
+  virtual Fl_Msaa_Proxy* msaa_proxy();
+
+  virtual HRESULT msaa_get_accParent(IDispatch**);
+  virtual HRESULT msaa_get_accChildCount(long*);
+  virtual HRESULT msaa_get_accChild(VARIANT, IDispatch**);
+  virtual HRESULT msaa_get_accName(VARIANT, BSTR*);
+  virtual HRESULT msaa_get_accValue(VARIANT, BSTR*);
+  virtual HRESULT msaa_get_accDescription(VARIANT, BSTR*);
+  virtual HRESULT msaa_get_accRole(VARIANT, VARIANT*);
+  virtual HRESULT msaa_get_accState(VARIANT, VARIANT*);
+  virtual HRESULT msaa_get_accHelp(VARIANT, BSTR*);
+  virtual HRESULT msaa_get_accHelpTopic(BSTR*, VARIANT, long*);
+  virtual HRESULT msaa_get_accKeyboardShortcut(VARIANT, BSTR*);
+  virtual HRESULT msaa_get_accFocus(VARIANT*);
+  virtual HRESULT msaa_get_accSelection(VARIANT*);
+  virtual HRESULT msaa_get_accDefaultAction(VARIANT, BSTR*);
+  virtual HRESULT msaa_accSelect(long, VARIANT);
+  virtual HRESULT msaa_accLocation(long*, long*, long*, long*, VARIANT);
+  virtual HRESULT msaa_accNavigate(long, VARIANT, VARIANT*);
+  virtual HRESULT msaa_accHitTest(long, long, VARIANT*);
+  virtual HRESULT msaa_accDoDefaultAction(VARIANT);
+  virtual HRESULT msaa_put_accName(VARIANT, BSTR);
+  virtual HRESULT msaa_put_accValue(VARIANT, BSTR);
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 // reserved type numbers (necessary for my cheapo RTTI) start here.

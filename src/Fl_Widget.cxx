@@ -133,6 +133,11 @@ Fl_Widget::Fl_Widget(int X, int Y, int W, int H, const char* L) {
   align_	 = FL_ALIGN_CENTER;
   when_		 = FL_WHEN_RELEASE;
 
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // Initialize MSAA stuff
+  msaa_proxy_	 = 0;
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
   parent_ = 0;
   if (Fl_Group::current()) Fl_Group::current()->add(this);
 }
@@ -169,8 +174,15 @@ Fl_Widget::~Fl_Widget() {
   if (flags() & COPIED_LABEL) free((void *)(label_.value));
   parent_ = 0; // Don't throw focus to a parent widget.
   fl_throw_focus(this);
+<<<<<<< .mine
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  msaa_cleanup();
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+=======
   // remove stale entries from default callback queue (Fl::readqueue())
   if (callback_ == default_callback) cleanup_readqueue(this);
+>>>>>>> .r7555
 }
 
 // draw a focus box for the widget...
@@ -311,6 +323,297 @@ Fl_Widget::copy_label(const char *a) {
   }
   redraw_label();
 }
+
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+#include <FL/x.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+void
+Fl_Widget::msaa_cleanup()
+{
+  // Detach MSAA proxy object and release reference
+  if (msaa_proxy_)
+  {
+    msaa_proxy_->Detach();
+    msaa_proxy_->Release();
+  }
+}
+
+
+long
+Fl_Widget::msaa_role()
+{
+  return ROLE_SYSTEM_STATICTEXT;
+}
+
+
+long
+Fl_Widget::msaa_state()
+{
+  return visible() ? 0 : STATE_SYSTEM_INVISIBLE;
+}
+
+
+Fl_Msaa_Proxy*
+Fl_Widget::msaa_proxy()
+{
+  // Allow some widgets to be represented as simple elements
+  if (!msaa_use_proxy())  return 0;
+
+  if (!msaa_proxy_)
+  {
+    // Link an IAccessible proxy to this widget
+    msaa_proxy_ = new Fl_Msaa_Proxy(this);
+    if (msaa_proxy_)  msaa_proxy_->AddRef();
+  }
+  return msaa_proxy_;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accParent(IDispatch** ppdispParent)
+{
+  Fl_Group* p = parent();
+  if (p)
+  {
+    // Traversing inside FLTK hierarchy
+    Fl_Msaa_Proxy* proxy = p->msaa_proxy();
+    if (!proxy)  return S_FALSE;
+    proxy->QueryInterface(IID_IDispatch, (void**)ppdispParent);
+    return S_OK;
+  }
+  else
+  {
+    // Moving outside FLTK hierarchy
+    HWND hwnd = fl_xid((Fl_Window*)this);
+    return flAccessibleObjectFromWindow(hwnd, OBJID_WINDOW,
+	IID_IDispatch, (void**)ppdispParent);
+  }
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accChildCount(long* pcountChildren)
+{
+  // Widget has not children by default
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accChild(VARIANT varChild, IDispatch** ppdispChild)
+{
+  // Widget has no children by default
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  Fl_Msaa_Proxy* proxy = msaa_proxy();
+  if (!proxy)  return S_FALSE;
+  proxy->QueryInterface(IID_IDispatch, (void**)ppdispChild);
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accName(VARIANT varChild, BSTR* pszName)
+{
+  // Use widget label as default name
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  fl_str_to_bstr(label(), -1, pszName);
+  return S_OK;
+}
+
+
+HRESULT
+Fl_Widget::msaa_get_accValue(VARIANT varChild, BSTR* pszValue)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return DISP_E_MEMBERNOTFOUND;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accDescription(VARIANT varChild, BSTR* pszDescription)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accRole(VARIANT varChild, VARIANT* pvarRole)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  pvarRole->vt   = VT_I4;
+  pvarRole->lVal = msaa_role();
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accState(VARIANT varChild, VARIANT* pvarState)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  pvarState->vt   = VT_I4;
+  pvarState->lVal = msaa_state();
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accHelp(VARIANT varChild, BSTR* pszHelp)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accHelpTopic(BSTR* pszHelpFile, VARIANT varChild,
+    long* pidTopic)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accKeyboardShortcut(VARIANT varChild,
+    BSTR* pszKeyboardShortcut)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accFocus(VARIANT* pvarChild)
+{
+  if (Fl::focus() != this)  return S_FALSE;
+  pvarChild->vt   = VT_I4;
+  pvarChild->lVal = 0;
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accSelection(VARIANT* pvarChildren)
+{
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_get_accDefaultAction(VARIANT varChild, BSTR* pszDefaultAction)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_accSelect(long flagsSelect, VARIANT varChild)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  if (!(flagsSelect & SELFLAG_TAKEFOCUS))  return E_INVALIDARG;
+  if (!handle(FL_FOCUS))  return S_FALSE;
+  Fl::focus(this);
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_accLocation(long* pxLeft, long* pyTop,
+    long* pcxWidth, long* pcyHeight, VARIANT varChild)
+{
+  // Convert to screen co-ordinates
+  POINT pt = {x(), y()};
+  const Fl_Window* wnd = msaa_window();
+  if (this != (Fl_Widget*)wnd)  ClientToScreen(fl_xid(wnd), &pt);
+  *pxLeft    = pt.x;
+  *pyTop     = pt.y;
+  *pcxWidth  = w();
+  *pcyHeight = h();
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_accNavigate(long navDir, VARIANT varStart,
+    VARIANT* pvarEndUpAt)
+{
+  if (varStart.lVal != 0)  return E_INVALIDARG;
+
+  // Default IAccessible implementation has no children
+  if ((navDir == NAVDIR_FIRSTCHILD) || (navDir == NAVDIR_LASTCHILD))
+    return S_FALSE;
+
+  // Forward request to parent widget
+  if ((navDir == NAVDIR_PREVIOUS) || (navDir == NAVDIR_NEXT) ||
+      (navDir == NAVDIR_UP)       || (navDir == NAVDIR_DOWN) ||
+      (navDir == NAVDIR_LEFT)     || (navDir == NAVDIR_RIGHT))
+  {
+    // Get parent group
+    Fl_Group* p = parent();
+    if (!p)  return S_FALSE;
+
+    // Forward request to parent widget
+    varStart.vt   = VT_I4;
+    varStart.lVal = p->msaa_childId(this);
+    return p->msaa_accNavigate(navDir, varStart, pvarEndUpAt);
+  }
+
+  return E_INVALIDARG;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_accHitTest(long xLeft, long yTop, VARIANT* pvarChild)
+{
+  // Obtain screen co-ordinates of widget
+  VARIANT child;
+  child.vt   = VT_I4;
+  child.lVal = 0;
+  long x, y, w, h;
+  msaa_accLocation(&x, &y, &w, &h, child);
+
+  // Perform hit test now
+  if ((xLeft < x) || (xLeft >= (x + w)) || (yTop < y) || (yTop >= (y + h)))
+    return S_FALSE;
+  pvarChild->vt   = VT_I4;
+  pvarChild->lVal = 0;
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_accDoDefaultAction(VARIANT varChild)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_put_accName(VARIANT varChild, BSTR szName)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  char* s = fl_bstr_to_str(szName);
+  copy_label(s);
+  fl_free_str(s);
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Widget::msaa_put_accValue(VARIANT varChild, BSTR szValue)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  return DISP_E_MEMBERNOTFOUND;
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 
 
 //

@@ -69,6 +69,21 @@ public:
   void shortcut(const char *s) {shortcut(fl_old_shortcut(s));}
   Fl_Color down_color() const {return selection_color();}
   void down_color(unsigned c) {selection_color(c);}
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+protected:
+  long msaa_role();
+  long msaa_state();
+
+public:
+  HRESULT msaa_get_accName(VARIANT, BSTR*);
+  HRESULT msaa_get_accValue(VARIANT, BSTR*);
+  HRESULT msaa_get_accKeyboardShortcut(VARIANT, BSTR*);
+  HRESULT msaa_get_accDefaultAction(VARIANT, BSTR*);
+  HRESULT msaa_accDoDefaultAction(VARIANT);
+  HRESULT msaa_put_accValue(VARIANT, BSTR);
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 #endif

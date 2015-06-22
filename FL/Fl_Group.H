@@ -95,6 +95,36 @@ public:
   void focus(Fl_Widget* o) {o->take_focus();}
   Fl_Widget* & _ddfdesign_kludge() {return resizable_;}
   void forms_end();
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+protected:
+  long msaa_role();
+  virtual long msaa_child_count()  {return children();};
+
+public:
+  long msaa_childId(Fl_Widget*) const;
+
+  HRESULT msaa_get_accChildCount(long*);
+  HRESULT msaa_get_accChild(VARIANT, IDispatch**);
+  HRESULT msaa_get_accName(VARIANT, BSTR*);
+  HRESULT msaa_get_accValue(VARIANT, BSTR*);
+  HRESULT msaa_get_accDescription(VARIANT, BSTR*);
+  HRESULT msaa_get_accRole(VARIANT, VARIANT*);
+  HRESULT msaa_get_accState(VARIANT, VARIANT*);
+  HRESULT msaa_get_accHelp(VARIANT, BSTR*);
+  HRESULT msaa_get_accHelpTopic(BSTR*, VARIANT, long*);
+  HRESULT msaa_get_accKeyboardShortcut(VARIANT, BSTR*);
+  HRESULT msaa_get_accFocus(VARIANT*);
+  HRESULT msaa_get_accDefaultAction(VARIANT, BSTR*);
+  HRESULT msaa_accSelect(long, VARIANT);
+  HRESULT msaa_accLocation(long*, long*, long*, long*, VARIANT);
+  HRESULT msaa_accNavigate(long, VARIANT, VARIANT*);
+  HRESULT msaa_accHitTest(long, long, VARIANT*);
+  HRESULT msaa_accDoDefaultAction(VARIANT);
+  HRESULT msaa_put_accName(VARIANT, BSTR);
+  HRESULT msaa_put_accValue(VARIANT, BSTR);
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 // dummy class used to end child groups in constructors for complex

@@ -174,6 +174,27 @@ Fl_Window *Fl_Window::current() {
 }
 
 
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+long
+Fl_Window::msaa_role()
+{
+  return ROLE_SYSTEM_CLIENT;
+}
+
+
+long
+Fl_Window::msaa_state()
+{
+  return (STATE_SYSTEM_FOCUSABLE | (shown() ? 0 : STATE_SYSTEM_INVISIBLE));
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
+
 //
 // End of "$Id: Fl_Window.cxx 5251 2006-06-28 10:23:33Z matt $".
 //

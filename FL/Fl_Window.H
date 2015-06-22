@@ -126,6 +126,13 @@ public:
   void default_cursor(Fl_Cursor, Fl_Color=FL_BLACK, Fl_Color=FL_WHITE);
   static void default_callback(Fl_Window*, void* v);
 
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+protected:
+  const Fl_Window* msaa_window() const  {return this;};
+  long msaa_role();
+  long msaa_state();
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 #endif

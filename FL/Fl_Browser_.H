@@ -45,6 +45,8 @@
 #define FL_HOLD_BROWSER		2
 #define FL_MULTI_BROWSER	3
 
+class Fl_Browser_Proxy;
+
 class FL_EXPORT Fl_Browser_ : public Fl_Group {
   int position_;	// where user wants it scrolled to
   int real_position_;	// the current vertical scrolling position
@@ -145,6 +147,29 @@ public:
   void scrollbar_right() {scrollbar.align(FL_ALIGN_RIGHT);}
   void scrollbar_left() {scrollbar.align(FL_ALIGN_LEFT);}
 
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+private:
+  Fl_Browser_Proxy* msaa_browser_proxy_;
+
+protected:
+  void msaa_cleanup();
+  long msaa_state();
+  long msaa_child_count()  {return children() + 1;}
+
+public:
+  virtual void msaa_browser_bbox(long* X, long* Y, long* W, long* H);
+  virtual bool msaa_browser_item_bbox(long childId, long* Y, long* H);
+  virtual long msaa_browser_size();
+  virtual bool msaa_browser_displayed(long childId);
+  virtual long msaa_browser_find_item(int mouseY);
+  virtual long msaa_browser_focus();
+  virtual void msaa_browser_focus(long childId);
+  virtual const char* msaa_browser_text(long childId);
+
+  HRESULT msaa_get_accChild(VARIANT, IDispatch**);
+  HRESULT msaa_accHitTest(long, long, VARIANT*);
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 #endif

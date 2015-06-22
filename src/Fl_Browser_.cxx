@@ -810,6 +810,10 @@ Fl_Browser_::Fl_Browser_(int X, int Y, int W, int H, const char* l)
   max_width_item = 0;
   redraw1 = redraw2 = 0;
   end();
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // Initialize MSAA stuff
+  msaa_browser_proxy_ = 0;
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 }
 
 // Default versions of some of the virtual functions:
@@ -836,6 +840,665 @@ int Fl_Browser_::full_width() const {
 void Fl_Browser_::item_select(void*, int) {}
 
 int Fl_Browser_::item_selected(void* l) const {return l==selection_;}
+
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+#include <FL/x.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+// Specialized MSAA proxy for Fl_Browser_ object
+class Fl_Browser_Proxy : public Fl_Msaa_Proxy
+{
+public:
+  Fl_Browser_Proxy(Fl_Widget* o) : Fl_Msaa_Proxy(o)  {}
+
+  // IAccessible implementation
+  HRESULT STDMETHODCALLTYPE get_accParent(IDispatch**);
+  HRESULT STDMETHODCALLTYPE get_accChildCount(long*);
+  HRESULT STDMETHODCALLTYPE get_accChild(VARIANT, IDispatch**);
+  HRESULT STDMETHODCALLTYPE get_accName(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accValue(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accDescription(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accRole(VARIANT, VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accState(VARIANT, VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accHelp(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accHelpTopic(BSTR*, VARIANT, long*);
+  HRESULT STDMETHODCALLTYPE get_accKeyboardShortcut(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE get_accFocus(VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accSelection(VARIANT*);
+  HRESULT STDMETHODCALLTYPE get_accDefaultAction(VARIANT, BSTR*);
+  HRESULT STDMETHODCALLTYPE accSelect(long, VARIANT);
+  HRESULT STDMETHODCALLTYPE accLocation(long*, long*, long*, long*, VARIANT);
+  HRESULT STDMETHODCALLTYPE accNavigate(long, VARIANT, VARIANT*);
+  HRESULT STDMETHODCALLTYPE accHitTest(long, long, VARIANT*);
+  HRESULT STDMETHODCALLTYPE accDoDefaultAction(VARIANT);
+  HRESULT STDMETHODCALLTYPE put_accName(VARIANT, BSTR);
+  HRESULT STDMETHODCALLTYPE put_accValue(VARIANT, BSTR);
+};
+
+
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accParent(
+    /* [retval][out] */ IDispatch** ppdispParent)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!ppdispParent)  return E_INVALIDARG;
+  *ppdispParent = NULL;
+
+  // Fl_Browser_Proxy_ has a Fl_Msaa_Proxy parent
+  Fl_Msaa_Proxy* parent = browser->msaa_proxy();
+  if (!parent)  return S_FALSE;
+  parent->QueryInterface(IID_IDispatch, (void**)ppdispParent);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accChildCount(
+    /* [retval][out] */ long* pcountChildren)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pcountChildren)  return E_INVALIDARG;
+  *pcountChildren = browser->msaa_browser_size();
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accChild(
+    /* [in] */ VARIANT varChild,
+    /* [retval][out] */ IDispatch** ppdispChild)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)  return E_INVALIDARG;
+  if (!ppdispChild)  return E_INVALIDARG;
+  *ppdispChild = NULL;
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accName(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszName)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszName)  return E_INVALIDARG;
+  *pszName = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  // Report name of this widget
+  if (varChild.lVal == 0)
+    return browser->msaa_get_accName(varChild, pszName);
+
+  // Report text of required item as name
+  fl_str_to_bstr(browser->msaa_browser_text(varChild.lVal), -1, pszName);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accValue(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszValue)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszValue)  return E_INVALIDARG;
+  *pszValue = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  // Report name of this widget
+  if (varChild.lVal == 0)
+    return browser->msaa_get_accValue(varChild, pszValue);
+
+  // No value for list items
+  return DISP_E_MEMBERNOTFOUND;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accDescription(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszDescription)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszDescription)  return E_INVALIDARG;
+  *pszDescription = NULL;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  // Report description of this widget
+  if (varChild.lVal == 0)
+    return browser->msaa_get_accDescription(varChild, pszDescription);
+
+  // No description for list items
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accRole(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ VARIANT* pvarRole)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarRole)  return E_INVALIDARG;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  pvarRole->vt   = VT_I4;
+  if (varChild.lVal == 0)  pvarRole->lVal = ROLE_SYSTEM_LIST;
+  else                     pvarRole->lVal = ROLE_SYSTEM_LISTITEM;
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accState(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ VARIANT* pvarState)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarState)  return E_INVALIDARG;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  // Report state of this widget
+  if (varChild.lVal == 0)
+    return browser->msaa_get_accState(varChild, pvarState);
+
+  // Indicate whether a list item is visible
+  pvarState->vt   = VT_I4;
+  pvarState->lVal = STATE_SYSTEM_SELECTABLE;
+  if (!browser->msaa_browser_displayed(varChild.lVal))
+    pvarState->lVal |= (STATE_SYSTEM_INVISIBLE | STATE_SYSTEM_OFFSCREEN);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accHelp(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszHelp)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszHelp)  return E_INVALIDARG;
+  *pszHelp = NULL;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accHelpTopic(
+    /* [out] */ BSTR* pszHelpFile,
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ long* pidTopic)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszHelpFile)  return E_INVALIDARG;
+  if (!pidTopic)  return E_INVALIDARG;
+  *pszHelpFile = NULL;
+  *pidTopic = 0;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accKeyboardShortcut(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszKeyboardShortcut)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszKeyboardShortcut)  return E_INVALIDARG;
+  *pszKeyboardShortcut = NULL;
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accFocus(
+    /* [retval][out] */ VARIANT *pvarChild)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChild)  return E_INVALIDARG;
+  pvarChild->vt = VT_EMPTY;
+
+  // Check whether the browser has keyboard focus
+  Fl_Widget* f = Fl::focus();
+  if (f != browser)  return S_FALSE;
+
+  // Now return index of item with focus
+  pvarChild->vt   = VT_I4;
+  pvarChild->lVal = browser->msaa_browser_focus();
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accSelection(
+    /* [retval][out] */ VARIANT* pvarChildren)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChildren)  return E_INVALIDARG;
+  pvarChildren->vt = VT_EMPTY;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::get_accDefaultAction(
+    /* [optional][in] */ VARIANT varChild,
+    /* [retval][out] */ BSTR* pszDefaultAction)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pszDefaultAction)  return E_INVALIDARG;
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  // Report default action of this widget
+  if (varChild.lVal == 0)
+    return browser->msaa_get_accDefaultAction(varChild, pszDefaultAction);
+
+  // No default action for list items
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::accSelect(
+    /* [in] */ long flagsSelect,
+    /* [optional][in] */ VARIANT varChild)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::accLocation(
+    /* [out] */ long* pxLeft,
+    /* [out] */ long* pyTop,
+    /* [out] */ long* pcxWidth,
+    /* [out] */ long* pcyHeight,
+    /* [optional][in] */ VARIANT varChild)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pxLeft || !pyTop || !pcxWidth || !pcyHeight)  return E_INVALIDARG;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  if ((varChild.lVal < 0) || (varChild.lVal > browser->msaa_browser_size()))
+    return E_INVALIDARG;
+
+  browser->msaa_browser_bbox(pxLeft, pyTop, pcxWidth, pcyHeight);
+  if (varChild.lVal == 0)
+    return S_OK;
+  else if (browser->msaa_browser_item_bbox(varChild.lVal, pyTop, pcyHeight))
+    return S_OK;
+
+  *pxLeft = *pyTop = *pcxWidth = *pcyHeight = 0;
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::accNavigate(
+    /* [in] */ long navDir,
+    /* [optional][in] */ VARIANT varStart,
+    /* [retval][out] */ VARIANT* pvarEndUpAt)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarEndUpAt)  return E_INVALIDARG;
+  pvarEndUpAt->vt = VT_EMPTY;
+  if (varStart.vt != VT_I4)
+  {
+    varStart.vt   = VT_I4;
+    varStart.lVal = 0;
+  }
+
+  int id = varStart.lVal;
+  if ((id < 0) || (id > browser->msaa_browser_size()))  return E_INVALIDARG;
+
+  // Handle navigation relative to this widget
+  if ((id == 0) &&
+      (navDir != NAVDIR_FIRSTCHILD) && (navDir != NAVDIR_LASTCHILD))
+  {
+    // Forward request to browser widget
+    varStart.vt   = VT_I4;
+    varStart.lVal = browser->children() + 1;
+    return browser->msaa_accNavigate(navDir, varStart, pvarEndUpAt);
+  }
+
+  // Handle navigation within browser content
+  switch (navDir)
+  {
+    case NAVDIR_FIRSTCHILD:
+      if (id || !browser->msaa_browser_size())  return S_FALSE;
+      pvarEndUpAt->vt   = VT_I4;
+      pvarEndUpAt->lVal = 1;
+      return S_OK;
+
+    case NAVDIR_LASTCHILD:
+      if (id || !browser->msaa_browser_size())  return S_FALSE;
+      pvarEndUpAt->vt   = VT_I4;
+      pvarEndUpAt->lVal = browser->msaa_browser_size();
+      return S_OK;
+
+    case NAVDIR_UP:
+    case NAVDIR_PREVIOUS:
+      if (id == 1)
+      {
+	// Navigation beyond first child not allowed
+	return S_FALSE;
+      }
+      else
+      {
+	// Navigate to previous child
+	pvarEndUpAt->vt   = VT_I4;
+	pvarEndUpAt->lVal = id - 1;
+	return S_OK;
+      }
+
+    case NAVDIR_DOWN:
+    case NAVDIR_NEXT:
+      if (id == browser->msaa_browser_size())
+      {
+	// Navigation past last child not allowed
+	return S_FALSE;
+      }
+      else
+      {
+	// Navigate to next child
+	pvarEndUpAt->vt   = VT_I4;
+	pvarEndUpAt->lVal = id + 1;
+	return S_OK;
+      }
+
+    case NAVDIR_LEFT:
+    case NAVDIR_RIGHT:
+    default:
+      return E_INVALIDARG;
+  }
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::accHitTest(
+    /* [in] */ long xLeft,
+    /* [in] */ long yTop,
+    /* [retval][out] */ VARIANT* pvarChild)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (!pvarChild)  return E_INVALIDARG;
+  pvarChild->vt = VT_EMPTY;
+
+  // Convert to Fl_Window co-ordinates
+  POINT pt = {xLeft, yTop};
+  ScreenToClient(fl_xid(browser->window()), &pt);
+
+  // Check if it's outside the browser
+  if ((pt.x < browser->x()) || (pt.x >= browser->x() + browser->w()) ||
+      (pt.y < browser->y()) || (pt.y >= browser->y() + browser->h()))
+    return S_FALSE;
+
+  // Return child ID
+  pvarChild->vt   = VT_I4;
+  pvarChild->lVal = browser->msaa_browser_find_item(pt.y);
+  return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::accDoDefaultAction(
+    /* [optional][in] */ VARIANT varChild)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::put_accName(
+    /* [optional][in] */ VARIANT varChild,
+    /* [in] */ BSTR szName)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return S_FALSE;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+Fl_Browser_Proxy::put_accValue(
+    /* [optional][in] */ VARIANT varChild,
+    /* [in] */ BSTR szValue)
+{
+  Fl_Browser_* browser = (Fl_Browser_*)mpObj;
+  if (!browser)  return CO_E_OBJNOTCONNECTED;
+  if (varChild.vt != VT_I4)
+  {
+    varChild.vt   = VT_I4;
+    varChild.lVal = 0;
+  }
+  return S_FALSE;
+}
+
+
+/*------------------------- Fl_Browser_ MSAA support -----------------------*/
+
+void
+Fl_Browser_::msaa_cleanup()
+{
+  // Destroy custom proxy
+  if (msaa_browser_proxy_)
+  {
+    msaa_browser_proxy_->Detach();
+    msaa_browser_proxy_->Release();
+  }
+
+  // Destroy standard proxy
+  Fl_Widget::msaa_cleanup();
+}
+
+
+long
+Fl_Browser_::msaa_state()
+{
+  return (STATE_SYSTEM_FOCUSABLE | (visible() ? 0 : STATE_SYSTEM_INVISIBLE));
+}
+
+
+void
+Fl_Browser_::msaa_browser_bbox(
+    long* pxLeft, long* pyTop, long* pcxWidth, long* pcyHeight)
+{
+  Fl_Window* win = window();
+  int X, Y, W, H;
+  bbox(X, Y, W, H);
+  *pxLeft    = X + win->x();
+  *pyTop     = Y + win->y();
+  *pcxWidth  = W;
+  *pcyHeight = H;
+}
+
+
+bool
+Fl_Browser_::msaa_browser_item_bbox(long childId, long* Y, long* H)
+{
+  long id = 1;
+  for (void* l = item_first();  id != childId;  l = item_next(l), id++);
+  if (!displayed(l))  return false;
+  long dummy, top_y, full_h;
+  msaa_browser_bbox(&dummy, &top_y, &dummy, &full_h);
+  *Y = top_y;
+  *H = item_height(l);
+  for (;  l != top_;  l = item_prev(l))  *Y += item_height(l);
+  if ((*Y + *H) > (top_y + full_h))  *H -= (top_y + full_h - *Y);
+  return true;
+}
+
+
+long
+Fl_Browser_::msaa_browser_size()
+{
+  long count = 0;
+  for (void* l = item_first();  l;  l = item_next(l))  count++;
+  return count;
+}
+
+
+bool
+Fl_Browser_::msaa_browser_displayed(long childId)
+{
+  long id = 1;
+  for (void* l = item_first();  id != childId;  l = item_next(l), id++);
+  return displayed(l);
+}
+
+
+long 
+Fl_Browser_::msaa_browser_find_item(int mouseY)
+{
+  int line = 0;
+  void* item = find_item(mouseY);
+  if (item)  for (;  item;  item = item_prev(item), line++);
+  return line;
+}
+
+
+long
+Fl_Browser_::msaa_browser_focus()
+{
+  if (!selection_)  return 0;
+  long value = 1;
+  for (void* l = item_first();  l != selection_;  l = item_next(l), value++);
+  return value;
+}
+
+
+void
+Fl_Browser_::msaa_browser_focus(long childId)
+{
+  long id = 1;
+  for (void* l = item_first();  id != childId;  l = item_next(l), id++);
+  display(l);
+}
+
+
+const char*
+Fl_Browser_::msaa_browser_text(long childId)
+{
+  return NULL;
+}
+
+
+HRESULT
+Fl_Browser_::msaa_get_accChild(VARIANT varChild, IDispatch** ppdispChild)
+{
+  // For valid indices, return child widget
+  if (varChild.lVal <= children())
+    return Fl_Group::msaa_get_accChild(varChild, ppdispChild);
+
+  // Create specialized list proxy if necessary
+  if (!msaa_browser_proxy_)
+  {
+    msaa_browser_proxy_ = new Fl_Browser_Proxy(this);
+    if (!msaa_browser_proxy_)  return S_FALSE;
+    msaa_browser_proxy_->AddRef();
+  }
+  msaa_browser_proxy_->QueryInterface(IID_IDispatch, (void**)ppdispChild);
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Browser_::msaa_accHitTest(long xLeft, long yTop, VARIANT* pvarChild)
+{
+  HRESULT result = Fl_Group::msaa_accHitTest(xLeft, yTop, pvarChild);
+  if (result != S_OK)  return result;
+  if (pvarChild->vt != VT_I4 && pvarChild->lVal != 0)  return result;
+
+  // Perform hit test against browser content area
+  long X, Y, W, H;
+  msaa_browser_bbox(&X, &Y, &W, &H);
+  if ((xLeft >= X) && (xLeft < X + W) && (yTop >= Y) && (yTop < Y + H))
+  {
+    VARIANT child;
+    child.vt   = VT_I4;
+    child.lVal = children() + 1;
+    result = msaa_get_accChild(child, &pvarChild->pdispVal);
+    if (result == S_OK)  pvarChild->vt = VT_DISPATCH;
+    return result;
+  }
+  return S_OK;
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
 
 //
 // End of "$Id: Fl_Browser_.cxx 5992 2007-12-15 16:20:16Z mike $".

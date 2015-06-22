@@ -42,6 +42,12 @@ public:
 	: Fl_Widget(X,Y,W,H,l) {box(b);}
 
   virtual int handle(int);
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+protected:
+  // MSAA support
+  bool msaa_use_proxy()  {return false;}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 #endif

@@ -33,6 +33,8 @@
 #endif
 #include "Fl_Menu_Item.H"
 
+class Fl_Menu_Proxy;
+
 class FL_EXPORT Fl_Menu_ : public Fl_Widget {
 
   Fl_Menu_Item *menu_;
@@ -93,6 +95,18 @@ public:
   // back compatability:
   Fl_Color down_color() const {return selection_color();}
   void down_color(unsigned c) {selection_color(c);}
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+  // MSAA support
+private:
+  Fl_Menu_Proxy** msaa_menu_items_;
+  Fl_Menu_Proxy** msaa_menu_popups_;
+  void msaa_menu_clear();
+
+public:
+  Fl_Menu_Proxy* msaa_menu_proxy(int, bool);
+  Fl_Msaa_Proxy* msaa_proxy();
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
 };
 
 #endif

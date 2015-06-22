@@ -902,6 +902,57 @@ Fl_Input_::~Fl_Input_() {
   if (bufsize) free((void*)buffer);
 }
 
+
+#if defined(WIN32) && (!defined(__GNUC__) || __GNUC__ >= 3)
+#include <FL/Fl_Msaa_Proxy.H>
+///////////////////////////////////////////////////////////////////////
+//
+//  The following code implements Microsoft Active Accessibility
+
+long
+Fl_Input_::msaa_role()
+{
+  return ROLE_SYSTEM_TEXT;
+}
+
+
+long
+Fl_Input_::msaa_state()
+{
+  return (STATE_SYSTEM_FOCUSABLE | (visible() ? 0 : STATE_SYSTEM_INVISIBLE));
+}
+
+
+HRESULT
+Fl_Input_::msaa_get_accValue(VARIANT varChild, BSTR* pszValue)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  if (input_type() != FL_SECRET_INPUT)
+    fl_str_to_bstr(value(), -1, pszValue);
+  else
+  {
+    int   len = size();
+    char* s = (char*)malloc(len);
+    memset(s, '*', len);
+    fl_str_to_bstr(s, len, pszValue);
+    free(s);
+  }
+  return S_OK;
+}
+
+
+HRESULT 
+Fl_Input_::msaa_put_accValue(VARIANT varChild, BSTR szValue)
+{
+  if (varChild.lVal != 0)  return E_INVALIDARG;
+  char* s = fl_bstr_to_str(szValue);
+  value(s);
+  fl_free_str(s);
+  return S_OK;
+}
+#endif // WIN32 && (!__GNUC__ || __GNUC__ >= 3)
+
+
 //
 // End of "$Id: Fl_Input_.cxx 6104 2008-04-21 20:54:37Z matt $".
 //
