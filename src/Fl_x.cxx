@@ -351,6 +351,8 @@ void fl_new_ic()
 		if (!fnt) fnt = strdup("-misc-fixed-*"); 
 		fs = XCreateFontSet(fl_display,	fnt, &missing_list,
 			&missing_count, &def_string);
+		XFreeStringList(missing_list);
+		free(fnt);
 	}
 	preedit_attr = XVaCreateNestedList(0,
 		XNSpotLocation, &spot,
@@ -454,6 +456,7 @@ void fl_set_spot(int font, int size, int x, int y, int w, int h)
 		if (!fnt) fnt = strdup("-misc-fixed-*");
 		fs = XCreateFontSet(fl_display,	fnt, &missing_list,
 			&missing_count, &def_string);
+		XFreeStringList(missing_list);
 		free(fnt);
 	}
 	if (fl_xim_ic != ic) {
@@ -504,7 +507,9 @@ void fl_init_xim()
                 return;
         }
 
-        if (xim_styles && xim_styles->count_styles) {
+	bool has_xim_styles = xim_styles && xim_styles->count_styles;
+	if (xim_styles)  XFree(xim_styles);
+        if (has_xim_styles) {
 		fl_new_ic();
         } else {
                 Fl::warning("No XIM style found\n");
@@ -515,7 +520,6 @@ void fl_init_xim()
         if (!fl_xim_ic) {
                 Fl::warning("XCreateIC() failed\n");
                 XCloseIM(fl_xim_im);
-                XFree(xim_styles);
                 fl_xim_im = NULL;
         }
 }
@@ -621,7 +625,7 @@ static void fl_init_workarea() {
   Atom actual;
   unsigned long count, remaining;
   int format;
-  unsigned *xywh;
+  unsigned *xywh = NULL;
 
   if (XGetWindowProperty(fl_display, RootWindow(fl_display, fl_screen),
                          _NET_WORKAREA, 0, 4 * sizeof(unsigned), False,
@@ -640,8 +644,8 @@ static void fl_init_workarea() {
     fl_workarea_xywh[1] = (int)xywh[1];
     fl_workarea_xywh[2] = (int)xywh[2];
     fl_workarea_xywh[3] = (int)xywh[3];
-    XFree(xywh);
   }
+  if (xywh)  XFree(xywh);
 }
 
 int Fl::x() {
