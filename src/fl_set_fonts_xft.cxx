@@ -193,7 +193,7 @@ Fl_Font Fl::set_fonts(const char* pattern_name)
 {
   FcFontSet  *fnt_set;     // Will hold the list of fonts we find
   FcPattern   *fnt_pattern; // Holds the generic "match all names" pattern
-  FcObjectSet *fnt_obj_set = 0; // Holds the generic "match all objects" 
+  FcObjectSet *fnt_obj_set; // Holds the generic "match all objects" 
   
   int j; // loop iterator variable
   int font_count; // Total number of fonts found to process
@@ -225,6 +225,7 @@ Fl_Font Fl::set_fonts(const char* pattern_name)
   
   // We don't need the fnt_pattern any more, release it
   FcPatternDestroy(fnt_pattern);
+  FcObjectSetDestroy(fnt_obj_set);
 
   // Now, if we got any fonts, iterate through them...
   if (fnt_set)
