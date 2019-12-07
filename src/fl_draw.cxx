@@ -66,6 +66,7 @@ fl_expand_text(const char* from, char* buf, int maxbuf, double maxw, int& n,
   double w = 0;
 
   const char* p = from;
+  const char* pe = p + strlen(p);
   for (;; p++) {
 
     int c = *p & 255;
@@ -85,6 +86,20 @@ fl_expand_text(const char* from, char* buf, int maxbuf, double maxw, int& n,
       if (!c) break;
       else if (c == '\n') {p++; break;}
       word_start = p+1;
+    }
+
+    if ((c & 0xc0) == 0xc0) {
+      // test for word-wrap before CJK char:
+      unsigned int ucs;
+      int u8len = fl_utf2ucs((uchar*)p, pe-p, &ucs);
+      if (word_start < p && wrap && u8len && fl_is_linebreak(ucs)) {
+        double newwidth = w + fl_width(word_end, o-word_end);
+	if (newwidth <= maxw) {
+          word_start = p;
+	  word_end = o;
+	  w = newwidth;
+	}
+      }
     }
 
     if (o > e) break; // don't overflow buffer
