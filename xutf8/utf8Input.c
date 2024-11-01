@@ -76,7 +76,8 @@ XConvertEucTwToUtf8(
  /* FIXME */
 #if HAVE_LIBC_ICONV
 	iconv_t cd;
-	int cdl;
+	size_t cdl;
+	size_t slen;
 #else
 	int i = 0;
 #endif
@@ -88,9 +89,9 @@ XConvertEucTwToUtf8(
 	memcpy(buf, buffer_return, (unsigned) len);
 
 #if HAVE_LIBC_ICONV
-	l = cdl = len;
+	l = cdl = slen = len;
 	cd = iconv_open("EUC-TW", "UTF-8");
-	iconv(cd, &b, &len, &buffer_return, &cdl);
+	iconv(cd, &b, &slen, &buffer_return, &cdl);
 	iconv_close(cd);
 	l -= cdl;	
 #else
